@@ -3,17 +3,12 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime
 
-from xero_python.accounting import AccountingApi
 from xero_python.accounting.api.accounting_api import empty
-from xero_python.api_client import ApiClient
-from xero_python.api_client.configuration import Configuration
-from xero_python.api_client.oauth2 import OAuth2Token
 
 from app.services.xero_auth import XeroAuthService
 from app.database.database import get_db
 from app.database.repository import XeroAuthRepository
-from app.config import settings
-from app.util.xero_token import register_xero_token_handlers
+from app.util.xero_connection import create_xero_api_client
 
 router = APIRouter(prefix="/reports", tags=["Xero Reports"])
 
@@ -21,24 +16,49 @@ def get_xero_auth_service(db: Session = Depends(get_db)) -> XeroAuthService:
     repo = XeroAuthRepository(db)
     return XeroAuthService(repo)
 
-def xero_bucket(report_date, due_date) -> str:
+def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, period_type: str) -> str:
+    """
+    Calculate aging bucket based on configurable periods.
+    
+    Args:
+        report_date: The report date
+        due_date: The invoice due date
+        periods: Number of aging periods
+        period_of: Duration of each period
+        period_type: Type of period (Day, Week, Month)
+    """
     days = (report_date - due_date).days
+    
     if days < 0:
         return "Current"
-    if days <= 30:
-        return "< 1 Month"
-    if days <= 60:
-        return "1 Month"
-    if days <= 90:
-        return "2 Months"
-    if days <= 120:
-        return "3 Months"
+    
+    # Calculate days per period based on type
+    if period_type.lower() == "day":
+        days_per_period = period_of
+    elif period_type.lower() == "week":
+        days_per_period = period_of * 7
+    elif period_type.lower() == "month":
+        days_per_period = period_of * 30  # Approximate
+    else:
+        days_per_period = period_of * 30  # Default to month
+    
+    # Calculate which period this falls into
+    for i in range(1, periods + 1):
+        if days <= i * days_per_period:
+            if i == 1:
+                return f"< 1 {period_type}"
+            else:
+                return f"{i-1} {period_type}{'s' if i-1 > 1 else ''}"
+    
     return "Older"
 
 @router.get("/aged-receivables")
 async def get_aged_receivables(
     tenant_id: str = Query(..., description="Xero tenant/organization ID"),
     report_date: str = Query(None, description="Report date in YYYY-MM-DD format"),
+    periods: int = Query(4, description="Number of aging periods"),
+    period_of: int = Query(1, description="Duration of each period"),
+    period_type: str = Query("Month", description="Type of period (Day, Week, Month)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """
@@ -59,34 +79,8 @@ async def get_aged_receivables(
     else:
         report_date_obj = datetime.utcnow().date()
 
-    # Build Xero SDK client
-    api_client = ApiClient(
-        Configuration(
-            debug=False,
-            oauth2_token=OAuth2Token(
-                client_id=settings.xero_client_id,
-                client_secret=settings.xero_client_secret
-            ),
-        ),
-        pool_threads=1,
-    )
-
-    # Prepare token dictionary for the SDK
-    token_dict = {
-        "access_token": connection.access_token,
-        "refresh_token": connection.refresh_token,
-        "scope": connection.scope.split(),
-        "expires_at": connection.expires_at.timestamp(),
-        "expires_in": int((connection.expires_at - datetime.utcnow()).total_seconds()),
-        "token_type": "Bearer"
-    }
-
-    # Register handlers for automatic refresh first, then set the token
-    register_xero_token_handlers(api_client, token_dict, tenant_id, xero_service)
-    api_client.set_oauth2_token(token_dict)
-
-    # Create Accounting API instance
-    accounting_api = AccountingApi(api_client)
+    # Create Xero API client with automatic token refresh
+    accounting_api = create_xero_api_client(connection, tenant_id, xero_service)
 
     try:
         # Fetch all unpaid invoices using SDK (automatic token refresh happens here)
@@ -110,8 +104,15 @@ async def get_aged_receivables(
         print(f"[XERO REPORT] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch invoices: {str(e)}")
 
-    # Build custom aged receivables report with Xero-style buckets
-    bucket_names = ["Current", "< 1 Month", "1 Month", "2 Months", "3 Months", "Older"]
+    # Generate bucket names based on configurable periods
+    bucket_names = ["Current"]
+    for i in range(1, periods + 1):
+        if i == 1:
+            bucket_names.append(f"< 1 {period_type}")
+        else:
+            bucket_names.append(f"{i-1} {period_type}{'s' if i-1 > 1 else ''}")
+    bucket_names.append("Older")
+    
     report = {}
     
     for inv in invoices:
@@ -121,7 +122,7 @@ async def get_aged_receivables(
         if not due_date:
             continue
             
-        bucket = xero_bucket(report_date_obj, due_date)
+        bucket = calculate_aging_bucket(report_date_obj, due_date, periods, period_of, period_type)
         amount_due = float(inv.amount_due) if inv.amount_due else 0
         
         if contact_name not in report:
@@ -131,5 +132,11 @@ async def get_aged_receivables(
     return {
         "aged_receivables": report, 
         "generated_at": report_date_obj.isoformat(),
-        "total_invoices": len(invoices)
+        "total_invoices": len(invoices),
+        "aging_config": {
+            "periods": periods,
+            "period_of": period_of,
+            "period_type": period_type,
+            "bucket_names": bucket_names
+        }
     }
