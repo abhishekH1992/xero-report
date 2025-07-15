@@ -1,12 +1,19 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional
-import httpx
 from datetime import datetime
+
+from xero_python.accounting import AccountingApi
+from xero_python.accounting.api.accounting_api import empty
+from xero_python.api_client import ApiClient
+from xero_python.api_client.configuration import Configuration
+from xero_python.api_client.oauth2 import OAuth2Token
 
 from app.services.xero_auth import XeroAuthService
 from app.database.database import get_db
 from app.database.repository import XeroAuthRepository
+from app.config import settings
+from app.util.xero_token import register_xero_token_handlers
 
 router = APIRouter(prefix="/reports", tags=["Xero Reports"])
 
@@ -14,31 +21,24 @@ def get_xero_auth_service(db: Session = Depends(get_db)) -> XeroAuthService:
     repo = XeroAuthRepository(db)
     return XeroAuthService(repo)
 
-def month_diff(d1, d2):
-    return (d1.year - d2.year) * 12 + d1.month - d2.month
-
-def xero_month_bucket(report_date, due_date):
-    print(report_date, due_date)
-
-    # If due date is after report date, it's Current
-    if due_date > report_date:
+def xero_bucket(report_date, due_date) -> str:
+    days = (report_date - due_date).days
+    if days < 0:
         return "Current"
-    # Calculate how many months ago the due date was, relative to the report date
-    months_diff = (report_date.year - due_date.year) * 12 + (report_date.month - due_date.month)
-    if months_diff == 0:
+    if days <= 30:
         return "< 1 Month"
-    elif months_diff == 1:
+    if days <= 60:
         return "1 Month"
-    elif months_diff == 2:
+    if days <= 90:
         return "2 Months"
-    elif months_diff == 3:
+    if days <= 120:
         return "3 Months"
-    else:
-        return "Older"
+    return "Older"
 
 @router.get("/aged-receivables")
 async def get_aged_receivables(
     tenant_id: str = Query(..., description="Xero tenant/organization ID"),
+    report_date: str = Query(None, description="Report date in YYYY-MM-DD format"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """
@@ -49,56 +49,87 @@ async def get_aged_receivables(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    # Refresh token if needed
-    expires_at = connection.expires_at
-    if not isinstance(expires_at, datetime):
-        raise HTTPException(status_code=500, detail="Invalid expires_at type in connection")
-    if expires_at <= datetime.utcnow():
-        token_response = await xero_service.refresh_access_token(str(connection.refresh_token), tenant_id=tenant_id)
-        xero_service.update_connection_tokens(tenant_id, token_response)
-        access_token = token_response.access_token
+    # Parse report_date or use today
+    if report_date:
+        try:
+            parsed_date = datetime.strptime(report_date, "%Y-%m-%d").date()
+            report_date_obj = parsed_date
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid report_date format. Use YYYY-MM-DD.")
     else:
-        access_token = str(connection.access_token)
+        report_date_obj = datetime.utcnow().date()
 
-    # Fetch all unpaid invoices
-    url = "https://api.xero.com/api.xro/2.0/Invoices"
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "xero-tenant-id": tenant_id,
-        "Accept": "application/json"
+    # Build Xero SDK client
+    api_client = ApiClient(
+        Configuration(
+            debug=False,
+            oauth2_token=OAuth2Token(
+                client_id=settings.xero_client_id,
+                client_secret=settings.xero_client_secret
+            ),
+        ),
+        pool_threads=1,
+    )
+
+    # Prepare token dictionary for the SDK
+    token_dict = {
+        "access_token": connection.access_token,
+        "refresh_token": connection.refresh_token,
+        "scope": connection.scope.split(),
+        "expires_at": connection.expires_at.timestamp(),
+        "expires_in": int((connection.expires_at - datetime.utcnow()).total_seconds()),
+        "token_type": "Bearer"
     }
-    params = {
-        "status": "AUTHORISED",
-        "where": "AmountDue>0"
-    }
+
+    # Register handlers for automatic refresh first, then set the token
+    register_xero_token_handlers(api_client, token_dict, tenant_id, xero_service)
+    api_client.set_oauth2_token(token_dict)
+
+    # Create Accounting API instance
+    accounting_api = AccountingApi(api_client)
+
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers, params=params)
-            response.raise_for_status()
-            invoices = response.json().get("Invoices", [])
-    except httpx.HTTPStatusError as e:
-        print(f"[XERO REPORT] Error status: {e.response.status_code}")
-        print(f"[XERO REPORT] Error response: {e.response.text}")
-        detail = e.response.json() if e.response.content else str(e)
-        raise HTTPException(status_code=e.response.status_code, detail=detail)
+        # Fetch all unpaid invoices using SDK (automatic token refresh happens here)
+        date_for_xero = f"{report_date_obj.year},{report_date_obj.month},{report_date_obj.day}"
+        where_clause = f"AmountDue>0 && DueDate <= DateTime({date_for_xero})"
+        
+        invoices_response = accounting_api.get_invoices(  # type: ignore
+            tenant_id,  # xero_tenant_id
+            empty,      # if_modified_since
+            where_clause,  # where
+            empty,      # order
+            empty,      # ids
+            empty,      # invoice_numbers
+            empty,      # contact_ids
+            ["AUTHORISED"],  # statuses
+        )
+        
+        invoices = invoices_response.invoices or []  # type: ignore
+        
+    except Exception as e:
+        print(f"[XERO REPORT] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch invoices: {str(e)}")
 
     # Build custom aged receivables report with Xero-style buckets
-    today = datetime.utcnow().date()
     bucket_names = ["Current", "< 1 Month", "1 Month", "2 Months", "3 Months", "Older"]
     report = {}
+    
     for inv in invoices:
-        contact = inv["Contact"]["Name"]
-        due_date_str = inv.get("DueDateString") or inv.get("DueDate")
-        if not due_date_str:
+        contact_name = inv.contact.name if inv.contact else "Unknown"
+        due_date = inv.due_date if inv.due_date else None
+        
+        if not due_date:
             continue
-        try:
-            due_date = datetime.strptime(due_date_str[:10], "%Y-%m-%d").date()
-        except Exception:
-            continue
-        bucket = xero_month_bucket(today, due_date)
-        amount_due = inv.get("AmountDue", 0)
-        if contact not in report:
-            report[contact] = {name: 0 for name in bucket_names}
-        report[contact][bucket] += amount_due
+            
+        bucket = xero_bucket(report_date_obj, due_date)
+        amount_due = float(inv.amount_due) if inv.amount_due else 0
+        
+        if contact_name not in report:
+            report[contact_name] = {name: 0 for name in bucket_names}
+        report[contact_name][bucket] += amount_due
 
-    return {"aged_receivables": report, "generated_at": today.isoformat()}
+    return {
+        "aged_receivables": report, 
+        "generated_at": report_date_obj.isoformat(),
+        "total_invoices": len(invoices)
+    }
