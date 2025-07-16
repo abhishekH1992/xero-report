@@ -86,7 +86,7 @@ async def get_aged_receivables(
     try:
         # Fetch all unpaid invoices using SDK (automatic token refresh happens here)
         date_for_xero = f"{report_date_obj.year},{report_date_obj.month},{report_date_obj.day}"
-        where_clause = f"AmountDue>0 && DueDate <= DateTime({date_for_xero})"
+        where_clause = f'AmountDue>0 && DueDate <= DateTime({date_for_xero}) && Type == "ACCREC"'
         
         invoices_response = accounting_api.get_invoices(  # type: ignore
             tenant_id,  # xero_tenant_id
