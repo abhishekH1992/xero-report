@@ -408,4 +408,18 @@ class XeroAuthService:
         """Generate PKCE code challenge from code verifier"""
         sha256_hash = hashlib.sha256(code_verifier.encode('utf-8')).digest()
         code_challenge = base64.urlsafe_b64encode(sha256_hash).decode('utf-8').rstrip('=')
-        return code_challenge 
+        return code_challenge
+    
+    @classmethod
+    def get_service_dependency(cls):
+        """FastAPI dependency function for XeroAuthService"""
+        from fastapi import Depends
+        from sqlalchemy.orm import Session
+        from app.database.database import get_db
+        from app.database.repository import XeroAuthRepository
+        
+        def _get_service(db: Session = Depends(get_db)) -> XeroAuthService:
+            repo = XeroAuthRepository(db)
+            return cls(repo)
+        
+        return _get_service 

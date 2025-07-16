@@ -6,15 +6,11 @@ from datetime import datetime
 from xero_python.accounting.api.accounting_api import empty
 
 from app.services.xero_auth import XeroAuthService
-from app.database.database import get_db
-from app.database.repository import XeroAuthRepository
 from app.util.xero_connection import create_xero_api_client
 
 router = APIRouter(prefix="/bank-transactions", tags=["Xero Bank Transactions"])
 
-def get_xero_auth_service(db: Session = Depends(get_db)) -> XeroAuthService:
-    repo = XeroAuthRepository(db)
-    return XeroAuthService(repo)
+get_xero_auth_service = XeroAuthService.get_service_dependency()
 
 @router.get("")
 async def get_bank_transactions(

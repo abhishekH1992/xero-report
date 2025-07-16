@@ -6,16 +6,12 @@ from datetime import datetime
 from xero_python.accounting.api.accounting_api import empty
 
 from app.services.xero_auth import XeroAuthService
-from app.database.database import get_db
-from app.database.repository import XeroAuthRepository
 from app.util.xero_connection import create_xero_api_client
 from app.util.report_export import export_report_to_excel
 
 router = APIRouter(prefix="/reports", tags=["Xero Reports"])
 
-def get_xero_auth_service(db: Session = Depends(get_db)) -> XeroAuthService:
-    repo = XeroAuthRepository(db)
-    return XeroAuthService(repo)
+get_xero_auth_service = XeroAuthService.get_service_dependency()
 
 def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, period_type: str) -> str:
     """

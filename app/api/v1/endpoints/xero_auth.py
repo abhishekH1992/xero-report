@@ -7,16 +7,10 @@ from datetime import datetime
 
 from app.services.xero_auth import XeroAuthService
 # from app.models.xero_auth import XeroTokenResponse, XeroConnection
-from app.database.database import get_db
-from app.database.repository import XeroAuthRepository
 
 router = APIRouter(prefix="/auth", tags=["Xero Authentication"])
 
-
-def get_xero_auth_service(db: Session = Depends(get_db)) -> XeroAuthService:
-    """Dependency to get XeroAuthService with database repository"""
-    repo = XeroAuthRepository(db)
-    return XeroAuthService(repo)
+get_xero_auth_service = XeroAuthService.get_service_dependency()
 
 
 @router.get("/login")
