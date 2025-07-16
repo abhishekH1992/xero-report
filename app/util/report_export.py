@@ -153,7 +153,7 @@ def export_report_to_excel(
         column_totals = {}
         for column in columns:
             key = column['key']
-            if key != 'Contact':  # Skip non-numeric columns
+            if key not in ('Contact', 'Comments'):  # Skip non-numeric columns
                 total = sum(row_data.get(key, 0) for row_data in data if isinstance(row_data.get(key), (int, float)))
                 column_totals[key] = total
         
@@ -164,6 +164,8 @@ def export_report_to_excel(
             if column['key'] == 'Contact':
                 cell.value = "Total"
                 cell.font = Font(bold=True)
+            elif column['key'] == 'Comments':
+                cell.value = ""
             else:
                 value = column_totals.get(column['key'], 0)
                 cell.value = value
@@ -196,6 +198,8 @@ def export_report_to_excel(
             if column['key'] == 'Contact':
                 cell.value = "Percentage"
                 cell.font = Font(bold=True)
+            elif column['key'] == 'Comments':
+                cell.value = ""
             elif column['key'] == 'Total':
                 cell.value = 1.0  # 100% for the Total column
                 cell.font = Font(bold=True)

@@ -219,13 +219,15 @@ async def get_aged_receivables(
             row[bucket_name] = amount
             total_amount += amount
         row["Total"] = total_amount
+        row["Comments"] = ""  # Add blank comments column
         excel_data.append(row)
     
     # Define columns for Excel export
     columns = [
         {"header": "Contact", "key": "Contact", "width": 30, "format": "text"},
         *[{"header": bucket, "key": bucket, "width": 15, "format": "currency"} for bucket in bucket_names],
-        {"header": "Total", "key": "Total", "width": 15, "format": "currency"}
+        {"header": "Total", "key": "Total", "width": 15, "format": "currency"},
+        {"header": "Comments", "key": "Comments", "width": 25, "format": "text"}
     ]
     
     # Export to Excel
