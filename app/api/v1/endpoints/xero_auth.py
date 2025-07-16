@@ -98,9 +98,30 @@ async def auth_callback(
         # Get tenant information
         tenant_info = await xero_service.get_tenant_info(token_response.access_token)
         
-        # Save connection (assuming first tenant for simplicity)
+        # Save connection
         if tenant_info:
-            tenant = tenant_info[0]  # Usually the first tenant is the primary one
+            # Log all available tenants for debugging
+            print(f"Available tenants: {[t.get('tenantName', 'Unknown') for t in tenant_info]}")
+            
+            # Try to find the most recently authenticated tenant
+            # Xero usually returns the active/selected tenant first
+            tenant = tenant_info[0]  # Start with first tenant
+            
+            # If there are multiple tenants, look for one that's not already in our database
+            if len(tenant_info) > 1:
+                existing_connections = xero_service.get_all_connections()
+                existing_tenant_ids = {conn.tenant_id for conn in existing_connections}
+                
+                # Try to find a tenant that's not already connected
+                for t in tenant_info:
+                    if t.get('tenantId') not in existing_tenant_ids:
+                        tenant = t
+                        print(f"Selected new tenant: {tenant.get('tenantName')}")
+                        break
+                else:
+                    # If all tenants are already connected, use the first one
+                    print(f"All tenants already connected, using first: {tenant.get('tenantName')}")
+            
             connection = xero_service.save_connection(
                 tenant_id=tenant['tenantId'],
                 tenant_name=tenant['tenantName'],
@@ -172,7 +193,28 @@ async def auth_callback_html(
         
         # Save connection
         if tenant_info:
-            tenant = tenant_info[0]
+            # Log all available tenants for debugging
+            print(f"Available tenants: {[t.get('tenantName', 'Unknown') for t in tenant_info]}")
+            
+            # Try to find the most recently authenticated tenant
+            # Xero usually returns the active/selected tenant first
+            tenant = tenant_info[0]  # Start with first tenant
+            
+            # If there are multiple tenants, look for one that's not already in our database
+            if len(tenant_info) > 1:
+                existing_connections = xero_service.get_all_connections()
+                existing_tenant_ids = {conn.tenant_id for conn in existing_connections}
+                
+                # Try to find a tenant that's not already connected
+                for t in tenant_info:
+                    if t.get('tenantId') not in existing_tenant_ids:
+                        tenant = t
+                        print(f"Selected new tenant: {tenant.get('tenantName')}")
+                        break
+                else:
+                    # If all tenants are already connected, use the first one
+                    print(f"All tenants already connected, using first: {tenant.get('tenantName')}")
+            
             connection = xero_service.save_connection(
                 tenant_id=tenant['tenantId'],
                 tenant_name=tenant['tenantName'],

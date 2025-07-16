@@ -331,6 +331,10 @@ class XeroAuthService:
         """
         Save Xero connection data to database
         
+        This method checks if a connection with the given tenant_id already exists.
+        If it exists, it updates the connection with new tokens and information.
+        If it doesn't exist, it creates a new connection.
+        
         Args:
             tenant_id: Xero tenant ID
             tenant_name: Xero tenant name
@@ -342,7 +346,7 @@ class XeroAuthService:
         if not token_response.expires_at:
             raise ValueError("Token response must have expires_at set")
             
-        return self.db_repo.create_connection(
+        return self.db_repo.upsert_connection(
             tenant_id=tenant_id,
             tenant_name=tenant_name,
             access_token=token_response.access_token,
