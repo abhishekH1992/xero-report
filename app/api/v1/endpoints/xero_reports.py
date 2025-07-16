@@ -101,6 +101,23 @@ async def get_aged_receivables(
         
         invoices = invoices_response.invoices or []  # type: ignore
         
+        # --- CREDIT NOTE LOGIC START ---
+        # Fetch all credit notes for the period (no type filter)
+        credit_where_clauses = []
+        credit_where_clauses.append(f"Date <= DateTime({date_for_xero})")
+        credit_where_clause = " && ".join(credit_where_clauses)
+        credit_notes_response = accounting_api.get_credit_notes(
+            tenant_id,
+            empty,  # if_modified_since
+            credit_where_clause,
+            empty,  # order
+            empty,  # ids
+            empty,  # contact_ids
+            empty,  # statuses
+        )
+        credit_notes = credit_notes_response.credit_notes or []
+        # --- CREDIT NOTE LOGIC END ---
+        
     except Exception as e:
         print(f"[XERO REPORT] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch invoices: {str(e)}")
@@ -129,6 +146,31 @@ async def get_aged_receivables(
         if contact_name not in report:
             report[contact_name] = {name: 0 for name in bucket_names}
         report[contact_name][bucket] += amount_due
+
+    # --- CREDIT NOTE LOGIC: Apply credits to correct bucket as negative value (set, not add) ---
+    for cn in credit_notes:
+        remaining_credit = float(getattr(cn, "remaining_credit", 0))
+        if remaining_credit > 0:
+            contact = cn.contact
+            contact_name = getattr(contact, "name", "Unknown") if contact else "Unknown"
+            # Use allocation date if available, otherwise credit note date
+            credit_date = None
+            allocations = getattr(cn, "allocations", [])
+            if allocations and getattr(allocations[0], "date", None):
+                credit_date = getattr(allocations[0], "date")
+            else:
+                credit_date = getattr(cn, "date", None)
+            # If credit_date is a datetime, convert to date
+            if hasattr(credit_date, "date"):
+                credit_date = credit_date.date()
+            # If still not a date, fallback to report_date_obj
+            if not credit_date:
+                credit_date = report_date_obj
+            bucket = calculate_aging_bucket(report_date_obj, credit_date, periods, period_of, period_type)
+            if contact_name not in report:
+                report[contact_name] = {name: 0 for name in bucket_names}
+            report[contact_name][bucket] = -remaining_credit  # Set as negative value (do not add)
+    # --- END CREDIT NOTE LOGIC ---
 
     # Prepare data for Excel export
     excel_data = []
