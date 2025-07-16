@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 from xero_python.accounting.api.accounting_api import empty
@@ -9,6 +9,7 @@ from app.services.xero_auth import XeroAuthService
 from app.database.database import get_db
 from app.database.repository import XeroAuthRepository
 from app.util.xero_connection import create_xero_api_client
+from app.util.report_export import export_report_to_excel
 
 router = APIRouter(prefix="/reports", tags=["Xero Reports"])
 
@@ -129,6 +130,39 @@ async def get_aged_receivables(
             report[contact_name] = {name: 0 for name in bucket_names}
         report[contact_name][bucket] += amount_due
 
+    # Prepare data for Excel export
+    excel_data = []
+    for contact_name, buckets in report.items():
+        row = {"Contact": contact_name}
+        total_amount = 0
+        for bucket_name in bucket_names:
+            amount = buckets.get(bucket_name, 0)
+            row[bucket_name] = amount
+            total_amount += amount
+        row["Total"] = total_amount
+        excel_data.append(row)
+    
+    # Define columns for Excel export
+    columns = [
+        {"header": "Contact", "key": "Contact", "width": 30, "format": "text"},
+        *[{"header": bucket, "key": bucket, "width": 15, "format": "currency"} for bucket in bucket_names],
+        {"header": "Total", "key": "Total", "width": 15, "format": "currency"}
+    ]
+    
+    # Export to Excel
+    excel_file_path = export_report_to_excel(
+        data=excel_data,
+        columns=columns,
+        filename="aged_receivables_report",
+        sheet_name="Aged Receivables",
+        title="Aged Receivables Summary",
+        organization_name=connection.tenant_name,  # This should come from Xero tenant info
+        report_date=f"As at {report_date_obj.strftime('%d %B %Y')}",
+        output_dir="tmp",
+        include_totals=True,
+        include_percentages=True
+    )
+    
     return {
         "aged_receivables": report, 
         "generated_at": report_date_obj.isoformat(),
@@ -138,5 +172,6 @@ async def get_aged_receivables(
             "period_of": period_of,
             "period_type": period_type,
             "bucket_names": bucket_names
-        }
+        },
+        "excel_file": excel_file_path
     }

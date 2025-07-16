@@ -28,13 +28,6 @@ class Settings(BaseSettings):
         # Try to load .env file manually first
         self._load_env_file()
         super().__init__(**kwargs)
-        # Debug: Print environment variables
-        print(f"🔍 Environment check:")
-        print(f"   XERO_CLIENT_ID from env: {os.getenv('XERO_CLIENT_ID', 'NOT_FOUND')}")
-        print(f"   XERO_CLIENT_SECRET from env: {os.getenv('XERO_CLIENT_SECRET', 'NOT_FOUND')}")
-        print(f"   .env file path: {os.path.abspath('.env')}")
-        print(f"   Current working directory: {os.getcwd()}")
-        print(f"   Settings loaded - client_id: {self.xero_client_id[:10] if self.xero_client_id else 'NOT_SET'}...")
 
     def _load_env_file(self):
         """Manually load .env file"""
@@ -46,7 +39,6 @@ class Settings(BaseSettings):
         
         for env_path in env_paths:
             if env_path.exists():
-                print(f"📁 Found .env file at: {env_path.absolute()}")
                 try:
                     with open(env_path, 'r', encoding='utf-8') as f:
                         for line in f:
@@ -54,7 +46,6 @@ class Settings(BaseSettings):
                             if line and not line.startswith('#') and '=' in line:
                                 key, value = line.split('=', 1)
                                 os.environ[key.strip()] = value.strip()
-                    print(f"✅ Loaded .env file from: {env_path}")
                     return
                 except Exception as e:
                     print(f"❌ Error loading .env file: {e}")
