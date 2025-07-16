@@ -118,6 +118,23 @@ async def get_aged_receivables(
         credit_notes = credit_notes_response.credit_notes or []
         # --- CREDIT NOTE LOGIC END ---
         
+        # --- BANK TRANSACTION LOGIC START ---
+        # Fetch bank transactions with type RECEIVE-OVERPAYMENT for the period
+        bank_where_clauses = ['Type == "RECEIVE-OVERPAYMENT"']
+        bank_where_clauses.append(f"Date <= DateTime({date_for_xero})")
+        bank_where_clause = " && ".join(bank_where_clauses)
+        bank_transactions_response = accounting_api.get_bank_transactions(
+            tenant_id,
+            empty,  # if_modified_since
+            bank_where_clause,
+            empty,  # order
+            empty,  # ids
+            empty,  # bank_account_ids
+            empty,  # statuses
+        )
+        bank_transactions = bank_transactions_response.bank_transactions or []
+        # --- BANK TRANSACTION LOGIC END ---
+        
     except Exception as e:
         print(f"[XERO REPORT] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch invoices: {str(e)}")
@@ -171,6 +188,26 @@ async def get_aged_receivables(
                 report[contact_name] = {name: 0 for name in bucket_names}
             report[contact_name][bucket] = -remaining_credit  # Set as negative value (do not add)
     # --- END CREDIT NOTE LOGIC ---
+
+    # --- BANK TRANSACTION LOGIC: Apply overpayments to correct bucket as negative value ---
+    for bt in bank_transactions:
+        amount = float(getattr(bt, "total", 0))  # Use 'total' instead of 'amount'
+        if amount > 0:
+            contact = bt.contact
+            contact_name = getattr(contact, "name", "Unknown") if contact else "Unknown"
+            # Use transaction date for aging bucket calculation
+            transaction_date = getattr(bt, "date", None)
+            # If transaction_date is a datetime, convert to date
+            if hasattr(transaction_date, "date"):
+                transaction_date = transaction_date.date()
+            # If still not a date, fallback to report_date_obj
+            if not transaction_date:
+                transaction_date = report_date_obj
+            bucket = calculate_aging_bucket(report_date_obj, transaction_date, periods, period_of, period_type)
+            if contact_name not in report:
+                report[contact_name] = {name: 0 for name in bucket_names}
+            report[contact_name][bucket] = -amount  # Set as negative value (do not add)
+    # --- END BANK TRANSACTION LOGIC ---
 
     # Prepare data for Excel export
     excel_data = []
