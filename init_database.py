@@ -24,7 +24,9 @@ def main():
     print(f"📁 Database directory: {db_dir.absolute()}")
     
     try:
-        # Create all tables
+        
+        # Create all tables with new schema
+        print("🏗️  Creating new tables with updated schema...")
         Base.metadata.create_all(bind=engine)
         print("✅ Database tables created successfully!")
         
