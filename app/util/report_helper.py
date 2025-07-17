@@ -59,7 +59,8 @@ def generate_bucket_names(periods: int, period_type: str) -> list:
 
 
 def process_financial_item(item, report_date, periods, period_of, period_type, bucket_names, report, 
-                         amount_field, date_field, is_negative=False, date_fallback=None):
+                         amount_field, date_field, is_negative=False, date_fallback=None, 
+                         connection_name=None, business_type=None):
     """
     Process a financial item (invoice, credit note, bank transaction) and categorize it into aging buckets.
     
@@ -112,11 +113,26 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
     if contact_name not in report:
         report[contact_name] = {name: 0 for name in bucket_names}
     
+    # Create a unique key that includes business unit and company
+    if connection_name and business_type:
+        key = f"{business_type}|{connection_name}|{contact_name}"
+    else:
+        key = contact_name
+    
+    # Initialize report entry if needed
+    if key not in report:
+        report[key] = {
+            "business_unit": business_type or "Unknown",
+            "company": connection_name or "Unknown", 
+            "contact": contact_name,
+            **{name: 0 for name in bucket_names}
+        }
+    
     # Add or subtract amount to bucket
     if is_negative:
-        report[contact_name][bucket] = -amount  # Set as negative value (do not add)
+        report[key][bucket] = -amount  # Set as negative value (do not add)
     else:
-        report[contact_name][bucket] += amount  # Add to existing value
+        report[key][bucket] += amount  # Add to existing value
     
     return report
 

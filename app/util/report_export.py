@@ -161,10 +161,10 @@ def export_report_to_excel(
         for col_idx, column in enumerate(columns, 1):
             cell = ws.cell(row=totals_row, column=col_idx)
             
-            if column['key'] == 'Contact':
+            if column['key'] == 'Business Unit':
                 cell.value = "Total"
                 cell.font = Font(bold=True)
-            elif column['key'] == 'Comments':
+            elif column['key'] in ('Company', 'Contact', 'Comments'):
                 cell.value = ""
             else:
                 value = column_totals.get(column['key'], 0)
@@ -195,7 +195,7 @@ def export_report_to_excel(
         for col_idx, column in enumerate(columns, 1):
             cell = ws.cell(row=percentages_row, column=col_idx)
             
-            if column['key'] == 'Contact':
+            if column['key'] == 'Business Unit':
                 cell.value = "Percentage"
                 cell.font = Font(bold=True)
             elif column['key'] == 'Comments':
