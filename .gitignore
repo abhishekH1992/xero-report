@@ -74,4 +74,9 @@ Thumbs.db
 # Temporary commit message file
 commit_message.txt 
 
-database/
+# Database files (but keep app/database folder structure)
+database/*.db
+database/*.sqlite
+database/*.sqlite3.db
+*.sqlite
+*.sqlite3
