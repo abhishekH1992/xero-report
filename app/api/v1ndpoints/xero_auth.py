@@ -23,15 +23,8 @@ async def login(
     use_pkce: bool = Query(True, description="Use PKCE for enhanced security"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
-    """
-    Generate authorization URL and redirect to Xero login
+    """Generate authorization URL and redirect to Xero login"""
     
-    This endpoint:
-    1. Generates a secure state parameter
-    2. Creates PKCE code verifier/challenge (if enabled)
-    3. Builds the authorization URL
-    4. Redirects user to Xero for authentication
-    """
     try:
         auth_url, auth_state = xero_service.generate_auth_url(use_pkce=use_pkce)
         
@@ -50,11 +43,8 @@ async def login_redirect(
     use_pkce: bool = Query(True, description="Use PKCE for enhanced security"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
-    """
-    Redirect directly to Xero login page
+    """Redirect directly to Xero login page"""
     
-    This is a convenience endpoint that immediately redirects to Xero
-    """
     try:
         auth_url, auth_state = xero_service.generate_auth_url(use_pkce=use_pkce)
         return RedirectResponse(url=auth_url)
@@ -68,15 +58,8 @@ async def refresh_token(
     tenant_id: str,
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
-    """
-    Refresh access token for a specific tenant
+    """Refresh access token for a specific tenant"""
     
-    This endpoint:
-    1. Gets the stored connection for the tenant
-    2. Checks if token needs refresh
-    3. Refreshes the token if needed
-    4. Updates the stored connection in database
-    """
     try:
         # Get existing connection
         connection = xero_service.get_connection(tenant_id)
@@ -84,7 +67,7 @@ async def refresh_token(
             raise HTTPException(status_code=404, detail="Connection not found")
         
         # Check if token needs refresh
-        buffer_time = datetime.utcnow().replace(second=0, microsecond=0)
+        buffer_time = datetime.utcnow().replace(second=0, minute=0)
         buffer_time = buffer_time.replace(minute=buffer_time.minute + 5)
         
         if buffer_time < connection.expires_at:
@@ -151,8 +134,7 @@ async def get_connection(
     """Get specific connection details from database"""
     connection = xero_service.get_connection(tenant_id)
     if not connection:
-        raise HTTPException(status_code=404, detail="Connection not found")
-    
+        raise HTTPException(status_code=404, detail="Connection not found")    
     return {
         "tenant_id": connection.tenant_id,
         "tenant_name": connection.tenant_name,

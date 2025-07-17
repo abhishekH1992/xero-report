@@ -55,7 +55,7 @@ class XeroAgedReceivablesService:
             
             # Get bank transactions
             bank_transactions = self._get_bank_transactions(accounting_api, tenant_id, date_for_xero)
-            
+            print(bank_transactions);
             return {
                 "invoices": invoices,
                 "credit_notes": credit_notes,
@@ -122,6 +122,7 @@ class XeroAgedReceivablesService:
         )
         
         return bank_transactions_response.bank_transactions or []
+
     
     @classmethod
     def get_service_dependency(cls):
