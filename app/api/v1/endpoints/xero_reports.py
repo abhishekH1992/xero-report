@@ -5,49 +5,13 @@ from datetime import datetime
 
 from xero_python.accounting.api.accounting_api import empty
 
-from app.services.xero_auth import XeroAuthService
-from app.util.xero_connection import create_xero_api_client
+from app.services.xero_aged_receivables_service import XeroAgedReceivablesService
 from app.util.report_export import export_report_to_excel
+from app.util.report_helper import calculate_aging_bucket, generate_bucket_names, process_financial_item
 
 router = APIRouter(prefix="/reports", tags=["Xero Reports"])
 
-get_xero_auth_service = XeroAuthService.get_service_dependency()
-
-def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, period_type: str) -> str:
-    """
-    Calculate aging bucket based on configurable periods.
-    
-    Args:
-        report_date: The report date
-        due_date: The invoice due date
-        periods: Number of aging periods
-        period_of: Duration of each period
-        period_type: Type of period (Day, Week, Month)
-    """
-    days = (report_date - due_date).days
-    
-    if days < 0:
-        return "Current"
-    
-    # Calculate days per period based on type
-    if period_type.lower() == "day":
-        days_per_period = period_of
-    elif period_type.lower() == "week":
-        days_per_period = period_of * 7
-    elif period_type.lower() == "month":
-        days_per_period = period_of * 30  # Approximate
-    else:
-        days_per_period = period_of * 30  # Default to month
-    
-    # Calculate which period this falls into
-    for i in range(1, periods + 1):
-        if days <= i * days_per_period:
-            if i == 1:
-                return f"< 1 {period_type}"
-            else:
-                return f"{i-1} {period_type}{'s' if i-1 > 1 else ''}"
-    
-    return "Older"
+get_aged_receivables_service = XeroAgedReceivablesService.get_service_dependency()
 
 @router.get("/aged-receivables")
 async def get_aged_receivables(
@@ -56,16 +20,11 @@ async def get_aged_receivables(
     periods: int = Query(4, description="Number of aging periods"),
     period_of: int = Query(1, description="Duration of each period"),
     period_type: str = Query("Month", description="Type of period (Day, Week, Month)"),
-    xero_service: XeroAuthService = Depends(get_xero_auth_service)
+    aged_receivables_service: XeroAgedReceivablesService = Depends(get_aged_receivables_service)
 ):
     """
     Custom Aged Receivables report: fetch all unpaid invoices, group by contact and Xero-style aging bucket.
     """
-    # Get connection from DB
-    connection = xero_service.get_connection(tenant_id)
-    if not connection:
-        raise HTTPException(status_code=404, detail="Connection not found")
-
     # Parse report_date or use today
     if report_date:
         try:
@@ -76,134 +35,76 @@ async def get_aged_receivables(
     else:
         report_date_obj = datetime.utcnow().date()
 
-    # Create Xero API client with automatic token refresh
-    accounting_api = create_xero_api_client(connection, tenant_id, xero_service)
-
     try:
-        # Fetch all unpaid invoices using SDK (automatic token refresh happens here)
-        date_for_xero = f"{report_date_obj.year},{report_date_obj.month},{report_date_obj.day}"
-        where_clause = f'AmountDue>0 && Type == "ACCREC"'
-        
-        invoices_response = accounting_api.get_invoices(  # type: ignore
-            tenant_id,  # xero_tenant_id
-            empty,      # if_modified_since
-            where_clause,  # where
-            empty,      # order
-            empty,      # ids
-            empty,      # invoice_numbers
-            empty,      # contact_ids
-            ["AUTHORISED"],  # statuses
+        # Fetch all data using the service
+        data = aged_receivables_service.get_aged_receivables_data(
+            tenant_id=tenant_id,
+            report_date=report_date_obj,
+            periods=periods,
+            period_of=period_of,
+            period_type=period_type
         )
         
-        invoices = invoices_response.invoices or []  # type: ignore
-        
-        # --- CREDIT NOTE LOGIC START ---
-        # Fetch all credit notes for the period (no type filter)
-        credit_where_clauses = []
-        credit_where_clauses.append(f"Date <= DateTime({date_for_xero})")
-        credit_where_clause = " && ".join(credit_where_clauses)
-        credit_notes_response = accounting_api.get_credit_notes(
-            tenant_id,
-            empty,  # if_modified_since
-            credit_where_clause,
-            empty,  # order
-            empty,  # ids
-            empty,  # contact_ids
-            empty,  # statuses
-        )
-        credit_notes = credit_notes_response.credit_notes or []
-        # --- CREDIT NOTE LOGIC END ---
-        
-        # --- BANK TRANSACTION LOGIC START ---
-        # Fetch bank transactions with type RECEIVE-OVERPAYMENT for the period
-        bank_where_clauses = ['Type == "RECEIVE-OVERPAYMENT"']
-        bank_where_clauses.append(f"Date <= DateTime({date_for_xero})")
-        bank_where_clause = " && ".join(bank_where_clauses)
-        bank_transactions_response = accounting_api.get_bank_transactions(
-            tenant_id,
-            empty,  # if_modified_since
-            bank_where_clause,
-            empty,  # order
-            empty,  # ids
-            empty,  # bank_account_ids
-            empty,  # statuses
-        )
-        bank_transactions = bank_transactions_response.bank_transactions or []
-        # --- BANK TRANSACTION LOGIC END ---
+        invoices = data["invoices"]
+        credit_notes = data["credit_notes"]
+        bank_transactions = data["bank_transactions"]
         
     except Exception as e:
         print(f"[XERO REPORT] Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch invoices: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch report data: {str(e)}")
 
     # Generate bucket names based on configurable periods
-    bucket_names = ["Current"]
-    for i in range(1, periods + 1):
-        if i == 1:
-            bucket_names.append(f"< 1 {period_type}")
-        else:
-            bucket_names.append(f"{i-1} {period_type}{'s' if i-1 > 1 else ''}")
-    bucket_names.append("Older")
+    bucket_names = generate_bucket_names(periods, period_type)
     
     report = {}
     
+    # Process invoices
     for inv in invoices:
-        contact_name = inv.contact.name if inv.contact else "Unknown"
-        due_date = inv.due_date if inv.due_date else None
-        
-        if not due_date:
-            continue
-            
-        bucket = calculate_aging_bucket(report_date_obj, due_date, periods, period_of, period_type)
-        amount_due = float(inv.amount_due) if inv.amount_due else 0
-        
-        if contact_name not in report:
-            report[contact_name] = {name: 0 for name in bucket_names}
-        report[contact_name][bucket] += amount_due
+        if inv.due_date:  # Only process invoices with due dates
+            process_financial_item(
+                item=inv,
+                report_date=report_date_obj,
+                periods=periods,
+                period_of=period_of,
+                period_type=period_type,
+                bucket_names=bucket_names,
+                report=report,
+                amount_field="amount_due",
+                date_field="due_date",
+                is_negative=False
+            )
 
-    # --- CREDIT NOTE LOGIC: Apply credits to correct bucket as negative value (set, not add) ---
+    # Process credit notes (apply as negative values)
     for cn in credit_notes:
-        remaining_credit = float(getattr(cn, "remaining_credit", 0))
-        if remaining_credit > 0:
-            contact = cn.contact
-            contact_name = getattr(contact, "name", "Unknown") if contact else "Unknown"
-            # Use allocation date if available, otherwise credit note date
-            credit_date = None
-            allocations = getattr(cn, "allocations", [])
-            if allocations and getattr(allocations[0], "date", None):
-                credit_date = getattr(allocations[0], "date")
-            else:
-                credit_date = getattr(cn, "date", None)
-            # If credit_date is a datetime, convert to date
-            if hasattr(credit_date, "date"):
-                credit_date = credit_date.date()
-            # If still not a date, fallback to report_date_obj
-            if not credit_date:
-                credit_date = report_date_obj
-            bucket = calculate_aging_bucket(report_date_obj, credit_date, periods, period_of, period_type)
-            if contact_name not in report:
-                report[contact_name] = {name: 0 for name in bucket_names}
-            report[contact_name][bucket] = -remaining_credit  # Set as negative value (do not add)
-    # --- END CREDIT NOTE LOGIC ---
+        process_financial_item(
+            item=cn,
+            report_date=report_date_obj,
+            periods=periods,
+            period_of=period_of,
+            period_type=period_type,
+            bucket_names=bucket_names,
+            report=report,
+            amount_field="remaining_credit",
+            date_field="date",
+            is_negative=True,
+            date_fallback=report_date_obj
+        )
 
-    # --- BANK TRANSACTION LOGIC: Apply overpayments to correct bucket as negative value ---
+    # Process bank transactions (apply as negative values for overpayments)
     for bt in bank_transactions:
-        amount = float(getattr(bt, "total", 0))  # Use 'total' instead of 'amount'
-        if amount > 0:
-            contact = bt.contact
-            contact_name = getattr(contact, "name", "Unknown") if contact else "Unknown"
-            # Use transaction date for aging bucket calculation
-            transaction_date = getattr(bt, "date", None)
-            # If transaction_date is a datetime, convert to date
-            if hasattr(transaction_date, "date"):
-                transaction_date = transaction_date.date()
-            # If still not a date, fallback to report_date_obj
-            if not transaction_date:
-                transaction_date = report_date_obj
-            bucket = calculate_aging_bucket(report_date_obj, transaction_date, periods, period_of, period_type)
-            if contact_name not in report:
-                report[contact_name] = {name: 0 for name in bucket_names}
-            report[contact_name][bucket] = -amount  # Set as negative value (do not add)
-    # --- END BANK TRANSACTION LOGIC ---
+        process_financial_item(
+            item=bt,
+            report_date=report_date_obj,
+            periods=periods,
+            period_of=period_of,
+            period_type=period_type,
+            bucket_names=bucket_names,
+            report=report,
+            amount_field="total",
+            date_field="date",
+            is_negative=True,
+            date_fallback=report_date_obj
+        )
 
     # Prepare data for Excel export
     excel_data = []
@@ -233,7 +134,6 @@ async def get_aged_receivables(
         filename="aged_receivables_report",
         sheet_name="Aged Receivables",
         title="Aged Receivables Summary",
-        organization_name=connection.tenant_name,  # This should come from Xero tenant info
         report_date=f"As at {report_date_obj.strftime('%d %B %Y')}",
         output_dir="tmp",
         include_totals=True,
