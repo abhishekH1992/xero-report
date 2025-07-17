@@ -6,9 +6,14 @@ import json
 from datetime import datetime
 
 from app.services.xero_auth import XeroAuthService
+from app.util.auth import api_key_auth
 # from app.models.xero_auth import XeroTokenResponse, XeroConnection
 
-router = APIRouter(prefix="/auth", tags=["Xero Authentication"])
+router = APIRouter(
+    prefix="/auth",
+    tags=["Xero Authentication"],
+    dependencies=[Depends(api_key_auth)]
+)
 
 get_xero_auth_service = XeroAuthService.get_service_dependency()
 

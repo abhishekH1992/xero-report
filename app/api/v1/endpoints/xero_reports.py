@@ -9,8 +9,13 @@ from app.services.xero_aged_receivables_service import XeroAgedReceivablesServic
 from app.services.xero_auth import XeroAuthService
 from app.util.report_export import export_report_to_excel
 from app.util.report_helper import calculate_aging_bucket, generate_bucket_names, process_financial_item
+from app.util.auth import api_key_auth
 
-router = APIRouter(prefix="/reports", tags=["Xero Reports"])
+router = APIRouter(
+    prefix="/reports",
+    tags=["Xero Reports"],
+    dependencies=[Depends(api_key_auth)]
+)
 
 get_aged_receivables_service = XeroAgedReceivablesService.get_service_dependency()
 get_xero_auth_service = XeroAuthService.get_service_dependency()
