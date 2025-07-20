@@ -6,6 +6,42 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
 
+def generate_system_comments(invoice_details: Dict[str, List[Dict]], bucket_names: List[str]) -> str:
+    """
+    Generate system comments based on invoice details for each aging bucket.
+    
+    Args:
+        invoice_details: Dictionary containing invoice details for each bucket
+        bucket_names: List of bucket names (aging periods)
+    
+    Returns:
+        Formatted string with comments for each bucket
+    """
+    comments = []
+    
+    for bucket_name in bucket_names:
+        bucket_invoices = invoice_details.get(bucket_name, [])
+        if bucket_invoices:
+            # Add period header
+            comments.append(f"{bucket_name}:")
+            for invoice in bucket_invoices:
+                invoice_number = invoice.get('invoice_number', 'Unknown')
+                amount = invoice.get('amount', 0)
+                is_negative = invoice.get('is_negative', False)
+                
+                # For credits/overpayments, provide context
+                if is_negative:
+                    if invoice_number == "Invoice Overpayments":
+                        comments.append(f"Invoice Overpayments (Paid upfront for future invoices) - {amount:,.2f}")
+                    else:
+                        comments.append(f"{invoice_number} (Credit/Overpayment) - {amount:,.2f}")
+                else:
+                    comments.append(f"{invoice_number} - {amount:,.2f}")
+            comments.append("")  # Add empty line between buckets
+    
+    return "\n".join(comments) if comments else ""
+
+
 def export_report_to_excel(
     data: List[Dict[str, Any]],
     columns: List[Dict[str, str]],
@@ -139,8 +175,15 @@ def export_report_to_excel(
             else:
                 cell.value = value
             
+            # Special formatting for System Comments column
+            if column['key'] == 'System Comments' and isinstance(value, str) and value:
+                # Set text wrapping and alignment for better readability
+                cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
+                cell.value = value
+            else:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+            
             cell.border = border
-            cell.alignment = Alignment(horizontal="left", vertical="center")
         
         current_row += 1
     
@@ -153,7 +196,7 @@ def export_report_to_excel(
         column_totals = {}
         for column in columns:
             key = column['key']
-            if key not in ('Contact', 'Comments'):  # Skip non-numeric columns
+            if key not in ('Contact', 'Comments', 'System Comments'):  # Skip non-numeric columns
                 total = sum(row_data.get(key, 0) for row_data in data if isinstance(row_data.get(key), (int, float)))
                 column_totals[key] = total
         
@@ -164,7 +207,7 @@ def export_report_to_excel(
             if column['key'] == 'Business Unit':
                 cell.value = "Total"
                 cell.font = Font(bold=True)
-            elif column['key'] in ('Company', 'Contact', 'Comments'):
+            elif column['key'] in ('Company', 'Contact', 'Comments', 'System Comments'):
                 cell.value = ""
             else:
                 value = column_totals.get(column['key'], 0)
@@ -198,7 +241,7 @@ def export_report_to_excel(
             if column['key'] == 'Business Unit':
                 cell.value = "Percentage"
                 cell.font = Font(bold=True)
-            elif column['key'] == 'Comments':
+            elif column['key'] in ('Comments', 'System Comments'):
                 cell.value = ""
             elif column['key'] == 'Total':
                 cell.value = 1.0  # 100% for the Total column

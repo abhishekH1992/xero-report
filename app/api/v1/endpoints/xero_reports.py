@@ -7,7 +7,7 @@ from xero_python.accounting.api.accounting_api import empty
 
 from app.services.xero_aged_receivables_service import XeroAgedReceivablesService
 from app.services.xero_auth import XeroAuthService
-from app.util.report_export import export_report_to_excel
+from app.util.report_export import export_report_to_excel, generate_system_comments
 from app.util.report_helper import calculate_aging_bucket, generate_bucket_names, process_financial_item
 from app.util.auth import api_key_auth
 
@@ -126,6 +126,8 @@ async def get_aged_receivables(
                         setattr(item, "amount_due", report_amount)
                         setattr(item, "status", status)
                         setattr(item, "total", total_amount)
+                        setattr(item, "invoice_number", getattr(invoice, 'invoice_number', None))
+                        setattr(item, "invoice_id", getattr(invoice, 'invoice_id', None))
                         
                         process_financial_item(
                             item,
@@ -144,27 +146,64 @@ async def get_aged_receivables(
             
             # Process grouped paid invoices
             for contact_name, invoice_data in contact_invoices.items():
-                item = type("Item", (), {})()
-                setattr(item, "contact", invoice_data['contact'])
-                setattr(item, "due_date", invoice_data['report_date_field'])
-                setattr(item, "amount_due", invoice_data['total_amount'])
-                setattr(item, "status", invoice_data['status'])
-                setattr(item, "total", invoice_data['total_amount'])
+                # For grouped invoices, we need to get the actual invoice numbers
+                # This represents paid invoices with future due dates (credits)
+                # We'll create separate items for each invoice to preserve invoice numbers
                 
-                process_financial_item(
-                    item,
-                    report_date_obj,
-                    periods,
-                    period_of,
-                    period_type,
-                    bucket_names,
-                    all_report_data,
-                    amount_field="amount_due",
-                    date_field="due_date",
-                    is_negative=invoice_data['is_negative'],
-                    connection_name=connection.tenant_name,
-                    business_type=getattr(connection, 'business_type', 'Commercial Properties')
-                )
+                # Get the original invoices for this contact that were grouped
+                contact_invoices_list = [inv for inv in invoices if getattr(inv.contact, 'name', '') == contact_name and inv.status == "PAID" and getattr(inv, 'due_date', None) and inv.due_date > report_date_obj and inv.amount_due == 0.0]
+                
+                if contact_invoices_list:
+                    # Process each invoice individually to preserve invoice numbers
+                    for invoice in contact_invoices_list:
+                        item = type("Item", (), {})()
+                        setattr(item, "contact", invoice.contact)
+                        setattr(item, "due_date", report_date_obj)  # Use report date to put in current column
+                        setattr(item, "amount_due", getattr(invoice, 'total', 0))  # Use total amount
+                        setattr(item, "status", invoice.status)
+                        setattr(item, "total", getattr(invoice, 'total', 0))
+                        setattr(item, "invoice_number", getattr(invoice, 'invoice_number', 'Unknown'))
+                        setattr(item, "invoice_id", getattr(invoice, 'invoice_id', None))
+                        
+                        process_financial_item(
+                            item,
+                            report_date_obj,
+                            periods,
+                            period_of,
+                            period_type,
+                            bucket_names,
+                            all_report_data,
+                            amount_field="amount_due",
+                            date_field="due_date",
+                            is_negative=True,  # Mark as negative to show as credit
+                            connection_name=connection.tenant_name,
+                            business_type=getattr(connection, 'business_type', 'Commercial Properties')
+                        )
+                else:
+                    # Fallback to grouped approach if we can't find individual invoices
+                    item = type("Item", (), {})()
+                    setattr(item, "contact", invoice_data['contact'])
+                    setattr(item, "due_date", invoice_data['report_date_field'])
+                    setattr(item, "amount_due", invoice_data['total_amount'])
+                    setattr(item, "status", invoice_data['status'])
+                    setattr(item, "total", invoice_data['total_amount'])
+                    setattr(item, "invoice_number", "Invoice Overpayments")
+                    setattr(item, "invoice_id", None)
+                    
+                    process_financial_item(
+                        item,
+                        report_date_obj,
+                        periods,
+                        period_of,
+                        period_type,
+                        bucket_names,
+                        all_report_data,
+                        amount_field="amount_due",
+                        date_field="due_date",
+                        is_negative=invoice_data['is_negative'],
+                        connection_name=connection.tenant_name,
+                        business_type=getattr(connection, 'business_type', 'Commercial Properties')
+                    )
 
             # Process credit notes (apply as negative values)
             for cn in credit_notes:
@@ -228,6 +267,12 @@ async def get_aged_receivables(
                 row[bucket_name] = amount
             row["Total"] = total_amount
             row["Comments"] = ""  # Add blank comments column
+            
+            # Generate system comments
+            invoice_details = data.get("invoice_details", {})
+            system_comments = generate_system_comments(invoice_details, bucket_names)
+            row["System Comments"] = system_comments
+            
             excel_data.append(row)
     
     # Define columns for Excel export
@@ -237,7 +282,8 @@ async def get_aged_receivables(
         {"header": "Contact", "key": "Contact", "width": 30, "format": "text"},
         *[{"header": bucket, "key": bucket, "width": 15, "format": "currency"} for bucket in bucket_names],
         {"header": "Total", "key": "Total", "width": 15, "format": "currency"},
-        {"header": "Comments", "key": "Comments", "width": 25, "format": "text"}
+        {"header": "Comments", "key": "Comments", "width": 25, "format": "text"},
+        {"header": "System Comments", "key": "System Comments", "width": 50, "format": "text"}
     ]
     
     # Export to Excel

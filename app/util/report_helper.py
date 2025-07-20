@@ -91,6 +91,11 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
     contact = getattr(item, "contact", None)
     contact_name = getattr(contact, "name", "Unknown") if contact else "Unknown"
     
+    # Extract invoice details
+    invoice_number = getattr(item, "invoice_number", None)
+    invoice_id = getattr(item, "invoice_id", None)
+    status = getattr(item, "status", None)
+    
     # Extract and process date
     item_date = getattr(item, date_field, None)
     
@@ -111,10 +116,6 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
     # Calculate aging bucket
     bucket = calculate_aging_bucket(report_date, item_date, periods, period_of, period_type)
     
-    # Initialize report entry if needed
-    if contact_name not in report:
-        report[contact_name] = {name: 0 for name in bucket_names}
-    
     # Create a unique key that includes business unit and company
     if connection_name and business_type:
         key = f"{business_type}|{connection_name}|{contact_name}"
@@ -127,7 +128,8 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
             "business_unit": business_type or "Unknown",
             "company": connection_name or "Unknown", 
             "contact": contact_name,
-            **{name: 0 for name in bucket_names}
+            **{name: 0 for name in bucket_names},
+            "invoice_details": {name: [] for name in bucket_names}  # Store invoice details for each bucket
         }
     
     # Add or subtract amount to bucket
@@ -135,6 +137,17 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
         report[key][bucket] = -amount  # Set as negative value (do not add)
     else:
         report[key][bucket] += amount  # Add to existing value
+    
+    # Store invoice details for system comments
+    if invoice_number:
+        invoice_detail = {
+            "invoice_number": invoice_number,
+            "invoice_id": invoice_id,
+            "amount": amount if not is_negative else -amount,
+            "is_negative": is_negative,
+            "status": status
+        }
+        report[key]["invoice_details"][bucket].append(invoice_detail)
     
     return report
 
