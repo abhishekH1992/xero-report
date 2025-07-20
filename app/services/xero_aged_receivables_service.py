@@ -51,12 +51,11 @@ class XeroAgedReceivablesService:
             invoices = self._get_unpaid_invoices(accounting_api, tenant_id, date_for_xero)
             
             # Get credit notes
-            # credit_notes = self._get_credit_notes(accounting_api, tenant_id, date_for_xero)
-            credit_notes = []
+            credit_notes = self._get_credit_notes(accounting_api, tenant_id, date_for_xero)
             
             # Get bank transactions
-            # bank_transactions = self._get_bank_transactions(accounting_api, tenant_id, date_for_xero)
-            bank_transactions = []
+            bank_transactions = self._get_bank_transactions(accounting_api, tenant_id, date_for_xero)
+
 
             return {
                 "invoices": invoices,
@@ -93,7 +92,8 @@ class XeroAgedReceivablesService:
         """Fetch all credit notes for the period"""
         credit_where_clauses = []
         credit_where_clauses.append(f"Date <= DateTime({date_for_xero})")
-        credit_where_clauses.append(f'Status == "PAID" OR Status == "AWAITING PAYMENT"')
+        credit_where_clauses.append(f"RemainingCredit > 0")
+        credit_where_clauses.append(f'(Status == "PAID" OR Status == "AUTHORISED")')
         credit_where_clause = " && ".join(credit_where_clauses)
         
         credit_notes_response = accounting_api.get_credit_notes(
@@ -113,6 +113,7 @@ class XeroAgedReceivablesService:
         bank_where_clauses = ['Type == "RECEIVE-OVERPAYMENT"']
         bank_where_clauses.append(f"Date <= DateTime({date_for_xero})")
         bank_where_clauses.append(f'Status == "AUTHORISED"')
+        bank_where_clauses.append(f'IsReconciled == false')
         bank_where_clause = " && ".join(bank_where_clauses)
         
         bank_transactions_response = accounting_api.get_bank_transactions(
