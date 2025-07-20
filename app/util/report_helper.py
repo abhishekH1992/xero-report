@@ -11,7 +11,7 @@ def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, 
     """
     days = (report_date - due_date).days
     
-    if days < 0:
+    if days <= 0:
         return "Current"
     
     # Calculate days per period based on type
@@ -80,8 +80,10 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
     Returns:
         Updated report dictionary
     """
+
     # Extract amount
     amount = float(getattr(item, amount_field, 0))
+
     if amount <= 0:
         return report
     
@@ -99,7 +101,7 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
             item_date = getattr(allocations[0], "date")
     
     # Convert datetime to date if needed
-    if hasattr(item_date, "date"):
+    if item_date and hasattr(item_date, "date"):
         item_date = item_date.date()
     
     # Use fallback date if no date available

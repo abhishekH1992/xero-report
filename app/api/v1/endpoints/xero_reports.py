@@ -73,22 +73,98 @@ async def get_aged_receivables(
             total_invoices += len(invoices)
             
             # Process invoices
-            for inv in invoices:
-                if inv.due_date:  # Only process invoices with due dates
-                    process_financial_item(
-                        item=inv,
-                        report_date=report_date_obj,
-                        periods=periods,
-                        period_of=period_of,
-                        period_type=period_type,
-                        bucket_names=bucket_names,
-                        report=all_report_data,
-                        amount_field="amount_due",
-                        date_field="due_date",
-                        is_negative=False,
-                        connection_name=connection.tenant_name,
-                        business_type=getattr(connection, 'business_type', 'Commercial Properties')
-                    )
+            # First, group invoices by contact to handle multiple paid invoices per contact
+            contact_invoices = {}
+            
+            for invoice in invoices:
+                amount_due = getattr(invoice, 'amount_due', 0.0)
+                due_date = getattr(invoice, 'due_date', None)
+                status = getattr(invoice, 'status', None)
+                total_amount = getattr(invoice, 'total', 0.0)
+                contact_name = getattr(invoice.contact, 'name', 'Unknown') if hasattr(invoice, 'contact') and invoice.contact else 'Unknown'
+                
+                # Convert due_date to date if it's a string
+                if due_date and isinstance(due_date, str):
+                    due_date = datetime.strptime(due_date[:10], "%Y-%m-%d").date()
+                
+                # Determine if we should include this invoice
+                include_in_report = False
+                report_amount = amount_due
+                report_date_field = due_date
+                is_negative = False
+                
+                if amount_due != 0.0:
+                    # Normal unpaid invoice - use due date and amount due
+                    include_in_report = True
+                    report_amount = amount_due
+                    report_date_field = due_date
+                    is_negative = amount_due < 0
+                elif status == "PAID" and due_date and due_date > report_date_obj and amount_due == 0.0:
+                    # Paid invoice with future due date and zero amount due = credit
+                    include_in_report = True
+                    report_amount = total_amount  # Use total amount (will be made negative)
+                    report_date_field = report_date_obj  # Use report date to put in current column
+                    is_negative = True  # Mark as negative to show as credit
+                
+                if include_in_report and report_date_field:
+                    # Group by contact for paid invoices with future due dates
+                    if is_negative:
+                        if contact_name not in contact_invoices:
+                            contact_invoices[contact_name] = {
+                                'contact': invoice.contact,
+                                'total_amount': 0,
+                                'report_date_field': report_date_field,
+                                'is_negative': is_negative,
+                                'status': status
+                            }
+                        contact_invoices[contact_name]['total_amount'] += report_amount
+                    else:
+                        # Process unpaid invoices immediately
+                        item = type("Item", (), {})()
+                        setattr(item, "contact", invoice.contact)
+                        setattr(item, "due_date", report_date_field)
+                        setattr(item, "amount_due", report_amount)
+                        setattr(item, "status", status)
+                        setattr(item, "total", total_amount)
+                        
+                        process_financial_item(
+                            item,
+                            report_date_obj,
+                            periods,
+                            period_of,
+                            period_type,
+                            bucket_names,
+                            all_report_data,
+                            amount_field="amount_due",
+                            date_field="due_date",
+                            is_negative=is_negative,
+                            connection_name=connection.tenant_name,
+                            business_type=getattr(connection, 'business_type', 'Commercial Properties')
+                        )
+            
+            # Process grouped paid invoices
+            for contact_name, invoice_data in contact_invoices.items():
+                item = type("Item", (), {})()
+                setattr(item, "contact", invoice_data['contact'])
+                setattr(item, "due_date", invoice_data['report_date_field'])
+                setattr(item, "amount_due", invoice_data['total_amount'])
+                setattr(item, "status", invoice_data['status'])
+                setattr(item, "total", invoice_data['total_amount'])
+                
+                process_financial_item(
+                    item,
+                    report_date_obj,
+                    periods,
+                    period_of,
+                    period_type,
+                    bucket_names,
+                    all_report_data,
+                    amount_field="amount_due",
+                    date_field="due_date",
+                    is_negative=invoice_data['is_negative'],
+                    connection_name=connection.tenant_name,
+                    business_type=getattr(connection, 'business_type', 'Commercial Properties')
+                )
 
             # Process credit notes (apply as negative values)
             for cn in credit_notes:
