@@ -60,7 +60,7 @@ def generate_bucket_names(periods: int, period_type: str) -> list:
 
 def process_financial_item(item, report_date, periods, period_of, period_type, bucket_names, report, 
                          amount_field, date_field, is_negative=False, date_fallback=None, 
-                         connection_name=None, business_type=None):
+                         connection_name=None, business_type=None, item_type="invoice"):
     """
     Process a financial item (invoice, credit note, bank transaction) and categorize it into aging buckets.
     
@@ -76,6 +76,7 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
         date_field: Field name for the date (e.g., 'due_date', 'date')
         is_negative: Whether to treat the amount as negative (for credits/overpayments)
         date_fallback: Fallback date if the primary date is not available
+        item_type: Type of item ("invoice", "credit_note", "bank_transaction")
     
     Returns:
         Updated report dictionary
@@ -84,17 +85,31 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
     # Extract amount
     amount = float(getattr(item, amount_field, 0))
 
-    if amount <= 0:
+    # For bank transactions, we allow positive amounts since we treat them as negative in the report
+    if amount <= 0 and item_type != "bank_transaction":
         return report
     
     # Extract contact name
     contact = getattr(item, "contact", None)
     contact_name = getattr(contact, "name", "Unknown") if contact else "Unknown"
     
-    # Extract invoice details
-    invoice_number = getattr(item, "invoice_number", None)
-    invoice_id = getattr(item, "invoice_id", None)
-    status = getattr(item, "status", None)
+    # Extract item details based on type
+    if item_type == "invoice":
+        item_number = getattr(item, "invoice_number", None)
+        item_id = getattr(item, "invoice_id", None)
+        status = getattr(item, "status", None)
+    elif item_type == "credit_note":
+        item_number = getattr(item, "credit_note_number", None)
+        item_id = getattr(item, "credit_note_id", None)
+        status = getattr(item, "status", None)
+    elif item_type == "bank_transaction":
+        item_number = f"BT-{getattr(item, 'bank_transaction_id', 'Unknown')[:8]}"  # Short ID
+        item_id = getattr(item, "bank_transaction_id", None)
+        status = getattr(item, "status", None)
+    else:
+        item_number = "Unknown"
+        item_id = None
+        status = None
     
     # Extract and process date
     item_date = getattr(item, date_field, None)
@@ -138,16 +153,17 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
     else:
         report[key][bucket] += amount  # Add to existing value
     
-    # Store invoice details for system comments
-    if invoice_number:
-        invoice_detail = {
-            "invoice_number": invoice_number,
-            "invoice_id": invoice_id,
+    # Store item details for system comments
+    if item_number:
+        item_detail = {
+            "item_number": item_number,
+            "item_id": item_id,
             "amount": amount if not is_negative else -amount,
             "is_negative": is_negative,
-            "status": status
+            "status": status,
+            "item_type": item_type
         }
-        report[key]["invoice_details"][bucket].append(invoice_detail)
+        report[key]["invoice_details"][bucket].append(item_detail)
     
     return report
 

@@ -20,26 +20,40 @@ def generate_system_comments(invoice_details: Dict[str, List[Dict]], bucket_name
     comments = []
     
     for bucket_name in bucket_names:
-        bucket_invoices = invoice_details.get(bucket_name, [])
-        if bucket_invoices:
+        bucket_items = invoice_details.get(bucket_name, [])
+        if bucket_items:
             # Add period header
             comments.append(f"{bucket_name}:")
-            for invoice in bucket_invoices:
-                invoice_number = invoice.get('invoice_number', 'Unknown')
-                amount = invoice.get('amount', 0)
-                is_negative = invoice.get('is_negative', False)
+            for item in bucket_items:
+                item_number = item.get('item_number', 'Unknown')
+                amount = item.get('amount', 0)
+                is_negative = item.get('is_negative', False)
+                item_type = item.get('item_type', 'invoice')
                 
-                # For credits/overpayments, provide context
-                if is_negative:
-                    if invoice_number == "Invoice Overpayments":
-                        comments.append(f"Invoice Overpayments (Paid upfront for future invoices) - {amount:,.2f}")
+                # Format based on item type
+                if item_type == "credit_note":
+                    if is_negative:
+                        comments.append(f"{item_number} (Credit Note) - {amount:,.2f}")
                     else:
-                        comments.append(f"{invoice_number} (Credit/Overpayment) - {amount:,.2f}")
+                        comments.append(f"{item_number} (Credit Note) - {amount:,.2f}")
+                elif item_type == "bank_transaction":
+                    if is_negative:
+                        comments.append(f"{item_number} (Bank Overpayment) - {amount:,.2f}")
+                    else:
+                        comments.append(f"{item_number} (Bank Transaction) - {amount:,.2f}")
                 else:
-                    comments.append(f"{invoice_number} - {amount:,.2f}")
+                    # For invoices and other items
+                    if is_negative:
+                        if item_number == "Invoice Overpayments":
+                            comments.append(f"Invoice Overpayments (Paid upfront for future invoices) - {amount:,.2f}")
+                        else:
+                            comments.append(f"{item_number} (Credit/Overpayment) - {amount:,.2f}")
+                    else:
+                        comments.append(f"{item_number} - {amount:,.2f}")
             comments.append("")  # Add empty line between buckets
     
-    return "\n".join(comments) if comments else ""
+    final_comments = "\n".join(comments) if comments else ""
+    return final_comments
 
 
 def export_report_to_excel(
@@ -147,45 +161,46 @@ def export_report_to_excel(
     
     current_row += 1
     
-    # Add data rows
-    for row_data in data:
-        for col_idx, column in enumerate(columns, 1):
-            cell = ws.cell(row=current_row, column=col_idx)
+    # Write data rows
+    for row_idx, row_data in enumerate(data, start=current_row + 1):
+        for col_idx, column in enumerate(columns, start=1):
+            cell_value = row_data.get(column['key'], '')
             
-            # Get value from data
-            value = row_data.get(column['key'], '')
+            cell = ws.cell(row=row_idx, column=col_idx)
             
             # Apply formatting based on column type
             format_type = column.get('format')
-            if format_type == 'currency' and isinstance(value, (int, float)):
+            if format_type == 'currency' and isinstance(cell_value, (int, float)):
                 cell.number_format = '"$"#,##0.00'
-                cell.value = value
-            elif format_type == 'percentage' and isinstance(value, (int, float)):
+                cell.value = cell_value
+            elif format_type == 'percentage' and isinstance(cell_value, (int, float)):
                 cell.number_format = '0.00%'
-                cell.value = value / 100 if value > 1 else value
+                cell.value = cell_value / 100 if cell_value > 1 else cell_value
             elif format_type == 'date':
-                if hasattr(value, 'strftime'):
-                    cell.value = value
+                if hasattr(cell_value, 'strftime'):
+                    cell.value = cell_value
                     cell.number_format = 'dd/mm/yyyy'
                 else:
-                    cell.value = value
-            elif format_type == 'number' and isinstance(value, (int, float)):
+                    cell.value = cell_value
+            elif format_type == 'number' and isinstance(cell_value, (int, float)):
                 cell.number_format = '#,##0.00'
-                cell.value = value
+                cell.value = cell_value
             else:
-                cell.value = value
+                cell.value = cell_value
             
             # Special formatting for System Comments column
-            if column['key'] == 'System Comments' and isinstance(value, str) and value:
+            if column['key'] == 'System Comments' and isinstance(cell_value, str) and cell_value:
                 # Set text wrapping and alignment for better readability
                 cell.alignment = Alignment(horizontal="left", vertical="top", wrap_text=True)
-                cell.value = value
+                # Ensure the cell is visible and properly sized
+                cell.font = Font(size=10)
+                # Set a minimum row height for System Comments
+                if row_idx > current_row:  # Skip header row
+                    ws.row_dimensions[row_idx].height = max(60, len(cell_value.split('\n')) * 15)
             else:
                 cell.alignment = Alignment(horizontal="left", vertical="center")
             
             cell.border = border
-        
-        current_row += 1
     
     # Add totals row if requested
     if include_totals and data:

@@ -141,7 +141,8 @@ async def get_aged_receivables(
                             date_field="due_date",
                             is_negative=is_negative,
                             connection_name=connection.tenant_name,
-                            business_type=getattr(connection, 'business_type', 'Commercial Properties')
+                            business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                            item_type="invoice"
                         )
             
             # Process grouped paid invoices
@@ -177,7 +178,8 @@ async def get_aged_receivables(
                             date_field="due_date",
                             is_negative=True,  # Mark as negative to show as credit
                             connection_name=connection.tenant_name,
-                            business_type=getattr(connection, 'business_type', 'Commercial Properties')
+                            business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                            item_type="invoice"
                         )
                 else:
                     # Fallback to grouped approach if we can't find individual invoices
@@ -202,7 +204,8 @@ async def get_aged_receivables(
                         date_field="due_date",
                         is_negative=invoice_data['is_negative'],
                         connection_name=connection.tenant_name,
-                        business_type=getattr(connection, 'business_type', 'Commercial Properties')
+                        business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                        item_type="invoice"
                     )
 
             # Process credit notes (apply as negative values)
@@ -220,11 +223,16 @@ async def get_aged_receivables(
                     is_negative=True,
                     date_fallback=report_date_obj,
                     connection_name=connection.tenant_name,
-                    business_type=getattr(connection, 'business_type', 'Commercial Properties')
+                    business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                    item_type="credit_note"
                 )
 
             # Process bank transactions (apply as negative values for overpayments)
-            for bt in bank_transactions:
+            # Filter to include only RECEIVE-OVERPAYMENT transactions
+            # Include both reconciled and unreconciled transactions
+            filtered_bank_transactions = [bt for bt in bank_transactions if bt.type == "RECEIVE-OVERPAYMENT" and bt.status == "AUTHORISED"]
+            
+            for bt in filtered_bank_transactions:
                 process_financial_item(
                     item=bt,
                     report_date=report_date_obj,
@@ -238,7 +246,8 @@ async def get_aged_receivables(
                     is_negative=True,
                     date_fallback=report_date_obj,
                     connection_name=connection.tenant_name,
-                    business_type=getattr(connection, 'business_type', 'Commercial Properties')
+                    business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                    item_type="bank_transaction"
                 )
                 
         except Exception as e:
@@ -257,10 +266,12 @@ async def get_aged_receivables(
         
         # Only include rows that have non-zero amounts
         if total_amount != 0:
+            contact_name = data.get("contact", "Unknown")
+            
             row = {
                 "Business Unit": data.get("business_unit", "Unknown"),
                 "Company": data.get("company", "Unknown"),
-                "Contact": data.get("contact", "Unknown")
+                "Contact": contact_name
             }
             for bucket_name in bucket_names:
                 amount = data.get(bucket_name, 0)
@@ -283,7 +294,7 @@ async def get_aged_receivables(
         *[{"header": bucket, "key": bucket, "width": 15, "format": "currency"} for bucket in bucket_names],
         {"header": "Total", "key": "Total", "width": 15, "format": "currency"},
         {"header": "Comments", "key": "Comments", "width": 25, "format": "text"},
-        {"header": "System Comments", "key": "System Comments", "width": 50, "format": "text"}
+        {"header": "System Comments", "key": "System Comments", "width": 80, "format": "text"}
     ]
     
     # Export to Excel
