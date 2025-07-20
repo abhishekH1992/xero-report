@@ -103,7 +103,7 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
         item_id = getattr(item, "credit_note_id", None)
         status = getattr(item, "status", None)
     elif item_type == "bank_transaction":
-        item_number = f"BT-{getattr(item, 'bank_transaction_id', 'Unknown')[:8]}"  # Short ID
+        item_number = f"{getattr(item, 'bank_transaction_id', 'Unknown')[:8]}"  # Short ID
         item_id = getattr(item, "bank_transaction_id", None)
         status = getattr(item, "status", None)
     else:
