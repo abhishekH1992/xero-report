@@ -54,7 +54,7 @@ class XeroAgedReceivablesService:
             credit_notes = self._get_credit_notes(accounting_api, tenant_id, date_for_xero)
             
             # Get bank transactions
-            bank_transactions = self._get_bank_transactions(accounting_api, tenant_id, date_for_xero)
+            # bank_transactions = self._get_bank_transactions(accounting_api, tenant_id, date_for_xero)
 
             # Get Overpayments
             overpayments = self._get_overpayments(accounting_api, tenant_id, date_for_xero)
