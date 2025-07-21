@@ -11,7 +11,7 @@ def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, 
     """
     days = (report_date - due_date).days
     
-    if days <= 0:
+    if days < 0:
         return "Current"
     
     # Calculate days per period based on type

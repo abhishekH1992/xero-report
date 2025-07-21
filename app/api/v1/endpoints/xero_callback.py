@@ -39,6 +39,7 @@ async def auth_callback(
                         break
                 else:
                     print(f"All tenants already connected, using first: {tenant.get('tenantName')}")
+
             connection = xero_service.save_connection(
                 tenant_id=tenant['tenantId'],
                 tenant_name=tenant['tenantName'],
