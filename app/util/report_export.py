@@ -110,7 +110,9 @@ def export_report_to_excel(
         cell.alignment = header_alignment
         cell.border = border
         ws.column_dimensions[get_column_letter(idx)].width = col.get("width", 15)
-    current_row += 1
+    header_row = current_row  # Save the header row index
+    # Do NOT increment current_row here!
+    # current_row += 1  # <-- REMOVE THIS LINE
 
     # Sort data
     data = sorted(
@@ -131,6 +133,7 @@ def export_report_to_excel(
                 sep.border = border
 
         last_company = company
+        # Write the data row
         current_row += 1
 
         # Write row values
@@ -229,6 +232,13 @@ def export_report_to_excel(
             )
         )
         ws.row_dimensions[row[0].row].height = min(50, h)
+
+    # Turn on filter arrows across your entire header+data block
+    first_header_row = header_row
+    last_data_row = current_row
+    last_data_col = get_column_letter(len(columns))
+    ws.auto_filter.ref = f"A{first_header_row}:{last_data_col}{last_data_row}"
+    ws.freeze_panes = ws[f"A{first_header_row+1}"]
 
     # Save
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
