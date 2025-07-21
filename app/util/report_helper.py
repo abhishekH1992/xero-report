@@ -149,7 +149,7 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
     
     # Add or subtract amount to bucket
     if is_negative:
-        report[key][bucket] = -amount  # Set as negative value (do not add)
+        report[key][bucket] -= amount  # Subtract amount (add negative value)
     else:
         report[key][bucket] += amount  # Add to existing value
     
