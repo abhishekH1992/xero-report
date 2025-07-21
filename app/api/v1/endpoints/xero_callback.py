@@ -28,6 +28,7 @@ async def auth_callback(
         if tenant_info:
             print(f"Available tenants: {[t.get('tenantName', 'Unknown') for t in tenant_info]}")
             tenant = tenant_info[0]
+            
             if len(tenant_info) > 1:
                 existing_connections = xero_service.get_all_connections()
                 existing_tenant_ids = {conn.tenant_id for conn in existing_connections}
