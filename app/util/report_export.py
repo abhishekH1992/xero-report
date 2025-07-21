@@ -23,17 +23,17 @@ def generate_system_comments(invoice_details: Dict[str, List[Dict]], bucket_name
                 item_type = item.get('item_type', 'invoice')
                 
                 if item_type == "credit_note":
-                    comments.append(f"{item_number} (Credit Note) - {amount:,.2f}")
+                    comments.append(f"{item_number} (Credit Note) = {amount:,.2f}")
                 elif item_type == "bank_transaction":
-                    comments.append(f"{item_number} (Bank Transaction) - {amount:,.2f}")
+                    comments.append(f"{item_number} (Bank Transaction) = {amount:,.2f}")
                 else:
                     if is_negative:
                         if item_number == "Invoice Overpayments":
-                            comments.append(f"Invoice Overpayments (Paid upfront for future invoices) - {amount:,.2f}")
+                            comments.append(f"Invoice Overpayments (Paid upfront for future invoices) = {amount:,.2f}")
                         else:
-                            comments.append(f"{item_number} (Credit/Overpayment) - {amount:,.2f}")
+                            comments.append(f"{item_number} (Credit/Overpayment) = {amount:,.2f}")
                     else:
-                        comments.append(f"{item_number} - {amount:,.2f}")
+                        comments.append(f"{item_number} = {amount:,.2f}")
             comments.append("")  # blank line between buckets
     
     return "\n".join(comments) if comments else ""

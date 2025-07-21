@@ -72,7 +72,7 @@ async def get_aged_receivables(
             
             invoices = data["invoices"]
             credit_notes = data["credit_notes"]
-            bank_transactions = data["bank_transactions"]
+            overpayments = data["overpayments"]  # Now properly contains overpayments from the service
             
             total_invoices += len(invoices)
             
@@ -231,27 +231,23 @@ async def get_aged_receivables(
                     item_type="credit_note"
                 )
 
-            # Process bank transactions (apply as negative values for overpayments)
-            # Filter to include only RECEIVE-OVERPAYMENT transactions
-            # Include both reconciled and unreconciled transactions
-            filtered_bank_transactions = [bt for bt in bank_transactions if bt.type == "RECEIVE-OVERPAYMENT" and bt.status == "AUTHORISED"]
-            
-            for bt in filtered_bank_transactions:
+            # Process overpayments (apply as negative values for credits)
+            for overpayment in overpayments:
                 process_financial_item(
-                    item=bt,
+                    item=overpayment,
                     report_date=report_date_obj,
                     periods=periods,
                     period_of=period_of,
                     period_type=period_type,
                     bucket_names=bucket_names,
                     report=all_report_data,
-                    amount_field="total",
+                    amount_field="remaining_credit",
                     date_field="date",
                     is_negative=True,
                     date_fallback=report_date_obj,
                     connection_name=connection.tenant_name,
                     business_type=getattr(connection, 'business_type', 'Commercial Properties'),
-                    item_type="bank_transaction"
+                    item_type="overpayment"
                 )
                 
         except Exception as e:

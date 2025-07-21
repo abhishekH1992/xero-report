@@ -33,7 +33,7 @@ class XeroAgedReceivablesService:
             period_type: Type of period (Day, Week, Month)
             
         Returns:
-            Dict containing invoices, credit_notes, and bank_transactions
+            Dict containing invoices, credit_notes, and overpayments
         """
         # Get connection from DB
         connection = self.xero_auth_service.get_connection(tenant_id)
@@ -56,11 +56,13 @@ class XeroAgedReceivablesService:
             # Get bank transactions
             bank_transactions = self._get_bank_transactions(accounting_api, tenant_id, date_for_xero)
 
+            # Get Overpayments
+            overpayments = self._get_overpayments(accounting_api, tenant_id, date_for_xero)
 
             return {
                 "invoices": invoices,
                 "credit_notes": credit_notes,
-                "bank_transactions": bank_transactions,
+                "overpayments": overpayments,
                 "report_date": report_date,
                 "periods": periods,
                 "period_of": period_of,
@@ -91,6 +93,7 @@ class XeroAgedReceivablesService:
     def _get_credit_notes(self, accounting_api, tenant_id: str, date_for_xero: str) -> List:
         """Fetch all credit notes for the period"""
         credit_where_clauses = []
+        credit_where_clauses.append(f'Type == "ACCRECCREDIT"')
         credit_where_clauses.append(f"Date <= DateTime({date_for_xero})")
         credit_where_clauses.append(f"RemainingCredit > 0")
         credit_where_clauses.append(f'(Status == "PAID" OR Status == "AUTHORISED")')
@@ -127,6 +130,50 @@ class XeroAgedReceivablesService:
         )
         
         return bank_transactions_response.bank_transactions or []
+
+    def _get_overpayments(self, accounting_api, tenant_id: str, date_for_xero: str) -> List:
+        """Fetch overpayments with remaining credit for the period"""
+        all_overpayments = []
+        page = 1
+        page_size = 100
+        
+        while True:
+            overpayment_clause = []
+            overpayment_clause = ['Type == "RECEIVE-OVERPAYMENT"']
+            overpayment_clause.append(f"Date <= DateTime({date_for_xero})")
+            overpayment_clause.append(f'Status == "AUTHORISED"')
+            overpayment_clause = " && ".join(overpayment_clause)
+            
+            overpayment_response = accounting_api.get_overpayments(
+                tenant_id,
+                empty,  # if_modified_since
+                overpayment_clause,
+                empty,  # order
+                empty,  # ids
+                empty,  # contact_ids
+                empty,  # statuses,
+                page,   # page
+                page_size  # page_size
+            )
+            
+            if not overpayment_response.overpayments:
+                break
+                
+            all_overpayments.extend(overpayment_response.overpayments)
+            
+            # If we got fewer results than page_size, we've reached the end
+            if len(overpayment_response.overpayments) < page_size:
+                break
+                
+            page += 1
+        
+        # Filter overpayments with remaining credit > 0
+        filtered_overpayments = [
+            op for op in all_overpayments 
+            if hasattr(op, 'remaining_credit') and getattr(op, 'remaining_credit', 0) > 0
+        ]
+        
+        return filtered_overpayments
 
     
     @classmethod
