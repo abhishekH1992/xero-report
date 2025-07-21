@@ -73,7 +73,7 @@ class XeroAgedReceivablesService:
     
     def _get_unpaid_invoices(self, accounting_api, tenant_id: str, date_for_xero: str) -> List:
         """Fetch all unpaid invoices"""
-        where_clause = f'Type == "ACCREC" && ((AmountDue>0 && DueDate <= DateTime({date_for_xero})) || (DueDate > DateTime({date_for_xero})))'
+        where_clause = f'Type == "ACCREC" && ((AmountDue>0 && Status == "AUTHORISED" && Date <= DateTime({date_for_xero})) || (Status == "PAID" && DueDate > DateTime({date_for_xero})))'
         
         invoices_response = accounting_api.get_invoices(
             tenant_id,  # xero_tenant_id
@@ -83,7 +83,7 @@ class XeroAgedReceivablesService:
             empty,      # ids
             empty,      # invoice_numbers
             empty,      # contact_ids
-            ["AUTHORISED", "PAID"],  # statuses
+            empty,  # statuses
         )
         
         return invoices_response.invoices or []

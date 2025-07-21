@@ -161,12 +161,18 @@ def export_report_to_excel(
     
     current_row += 1
     
-    # Write data rows
-    for row_idx, row_data in enumerate(data, start=current_row + 1):
+    # Remove any rows that are completely empty (all values are empty or whitespace)
+    data = [
+        row for row in data
+        if any(str(value).strip() for value in row.values())
+    ]
+    data_start_row = current_row + 1
+    for row_data in data:
+        current_row += 1
         for col_idx, column in enumerate(columns, start=1):
             cell_value = row_data.get(column['key'], '')
             
-            cell = ws.cell(row=row_idx, column=col_idx)
+            cell = ws.cell(row=current_row, column=col_idx)
             
             # Apply formatting based on column type
             format_type = column.get('format')
@@ -195,16 +201,18 @@ def export_report_to_excel(
                 # Ensure the cell is visible and properly sized
                 cell.font = Font(size=10)
                 # Set a minimum row height for System Comments
-                if row_idx > current_row:  # Skip header row
-                    ws.row_dimensions[row_idx].height = max(60, len(cell_value.split('\n')) * 15)
+                if current_row > current_row:  # Skip header row
+                    ws.row_dimensions[current_row].height = max(60, len(cell_value.split('\n')) * 15)
             else:
                 cell.alignment = Alignment(horizontal="left", vertical="center")
             
             cell.border = border
     
+    # Now current_row is the last data row, so totals will be written immediately after
+
     # Add totals row if requested
     if include_totals and data:
-        totals_row = current_row
+        totals_row = current_row + 1
         current_row += 1
         
         # Calculate totals for each column
@@ -243,7 +251,7 @@ def export_report_to_excel(
     
     # Add percentages row if requested
     if include_percentages and data and include_totals:
-        percentages_row = current_row
+        percentages_row = current_row + 1
         current_row += 1
         
         # Calculate grand total for percentage calculation (use the "Total" column)

@@ -136,7 +136,7 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
         key = f"{business_type}|{connection_name}|{contact_name}"
     else:
         key = contact_name
-    
+
     # Initialize report entry if needed
     if key not in report:
         report[key] = {

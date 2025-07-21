@@ -27,7 +27,8 @@ async def get_aged_receivables(
     period_of: int = Query(1, description="Duration of each period"),
     period_type: str = Query("Month", description="Type of period (Day, Week, Month)"),
     aged_receivables_service: XeroAgedReceivablesService = Depends(get_aged_receivables_service),
-    xero_auth_service: XeroAuthService = Depends(get_xero_auth_service)
+    xero_auth_service: XeroAuthService = Depends(get_xero_auth_service),
+    connection_id: str = Query(None, description="Connection ID")
 ):
     """
     Custom Aged Receivables report: fetch all unpaid invoices from all connections, 
@@ -44,7 +45,10 @@ async def get_aged_receivables(
         report_date_obj = datetime.utcnow().date()
 
     # Get all active connections
-    connections = xero_auth_service.get_all_connections()
+    if connection_id:
+        connections = [xero_auth_service.get_connection(connection_id)]
+    else:
+        connections = xero_auth_service.get_all_connections()
     if not connections:
         raise HTTPException(status_code=404, detail="No active Xero connections found")
 
@@ -263,29 +267,25 @@ async def get_aged_receivables(
         for bucket_name in bucket_names:
             amount = data.get(bucket_name, 0)
             total_amount += amount
-        
+        contact_name = data.get("contact", "Unknown")
+        row = {
+            "Business Unit": data.get("business_unit", "Unknown"),
+            "Company": data.get("company", "Unknown"),
+            "Contact": contact_name
+        }
+        for bucket_name in bucket_names:
+            amount = data.get(bucket_name, 0)
+            row[bucket_name] = amount
+        row["Total"] = total_amount
+        row["Comments"] = ""  # Add blank comments column
+        # Generate system comments
+        invoice_details = data.get("invoice_details", {})
+        system_comments = generate_system_comments(invoice_details, bucket_names)
+        row["System Comments"] = system_comments
         # Only include rows that have non-zero amounts
         if total_amount != 0:
-            contact_name = data.get("contact", "Unknown")
-            
-            row = {
-                "Business Unit": data.get("business_unit", "Unknown"),
-                "Company": data.get("company", "Unknown"),
-                "Contact": contact_name
-            }
-            for bucket_name in bucket_names:
-                amount = data.get(bucket_name, 0)
-                row[bucket_name] = amount
-            row["Total"] = total_amount
-            row["Comments"] = ""  # Add blank comments column
-            
-            # Generate system comments
-            invoice_details = data.get("invoice_details", {})
-            system_comments = generate_system_comments(invoice_details, bucket_names)
-            row["System Comments"] = system_comments
-            
             excel_data.append(row)
-    
+
     # Define columns for Excel export
     columns = [
         {"header": "Business Unit", "key": "Business Unit", "width": 20, "format": "text"},
