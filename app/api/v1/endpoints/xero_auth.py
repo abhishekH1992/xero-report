@@ -6,17 +6,16 @@ import json
 from datetime import datetime
 
 from app.services.xero_auth import XeroAuthService
-from app.models.xero_auth import XeroTokenResponse, XeroConnection
-from app.database.database import get_db
-from app.database.repository import XeroAuthRepository
+from app.util.auth import api_key_auth
+# from app.models.xero_auth import XeroTokenResponse, XeroConnection
 
-router = APIRouter(prefix="/auth", tags=["Xero Authentication"])
+router = APIRouter(
+    prefix="/auth",
+    tags=["Xero Authentication"],
+    dependencies=[Depends(api_key_auth)]
+)
 
-
-def get_xero_auth_service(db: Session = Depends(get_db)) -> XeroAuthService:
-    """Dependency to get XeroAuthService with database repository"""
-    repo = XeroAuthRepository(db)
-    return XeroAuthService(repo)
+get_xero_auth_service = XeroAuthService.get_service_dependency()
 
 
 @router.get("/login")
@@ -62,190 +61,6 @@ async def login_redirect(
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate auth URL: {str(e)}")
-
-
-@router.get("/callback")
-async def auth_callback(
-    code: str = Query(..., description="Authorization code from Xero"),
-    state: str = Query(..., description="State parameter for verification"),
-    error: Optional[str] = Query(None, description="Error from Xero if any"),
-    error_description: Optional[str] = Query(None, description="Error description from Xero"),
-    xero_service: XeroAuthService = Depends(get_xero_auth_service)
-):
-    """
-    Handle OAuth2 callback from Xero
-    
-    This endpoint:
-    1. Validates the state parameter
-    2. Exchanges authorization code for tokens
-    3. Gets tenant information
-    4. Saves connection data to database
-    5. Returns success response or error
-    
-    Note: Authorization codes can only be used once and expire quickly (usually 10 minutes)
-    """
-    # Check for OAuth2 errors
-    if error:
-        error_msg = f"OAuth2 error: {error}"
-        if error_description:
-            error_msg += f" - {error_description}"
-        raise HTTPException(status_code=400, detail=error_msg)
-    
-    try:
-        # Exchange code for tokens
-        token_response = await xero_service.exchange_code_for_tokens(code, state)
-        
-        # Get tenant information
-        tenant_info = await xero_service.get_tenant_info(token_response.access_token)
-        
-        # Save connection (assuming first tenant for simplicity)
-        if tenant_info:
-            tenant = tenant_info[0]  # Usually the first tenant is the primary one
-            connection = xero_service.save_connection(
-                tenant_id=tenant['tenantId'],
-                tenant_name=tenant['tenantName'],
-                token_response=token_response
-            )
-            
-            return {
-                "success": True,
-                "message": "Successfully authenticated with Xero",
-                "tenant": {
-                    "id": connection.tenant_id,
-                    "name": connection.tenant_name
-                },
-                "token_info": {
-                    "expires_at": token_response.expires_at.isoformat(),
-                    "scope": token_response.scope
-                }
-            }
-        else:
-            raise HTTPException(status_code=400, detail="No tenant information found")
-    
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Authentication failed: {str(e)}")
-
-
-@router.get("/callback/html")
-async def auth_callback_html(
-    code: str = Query(..., description="Authorization code from Xero"),
-    state: str = Query(..., description="State parameter for verification"),
-    error: Optional[str] = Query(None, description="Error from Xero if any"),
-    error_description: Optional[str] = Query(None, description="Error description from Xero"),
-    xero_service: XeroAuthService = Depends(get_xero_auth_service)
-):
-    """
-    Handle OAuth2 callback with HTML response for better user experience
-    """
-    if error:
-        error_msg = f"OAuth2 error: {error}"
-        if error_description:
-            error_msg += f" - {error_description}"
-        
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Authentication Failed</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }}
-                .error {{ color: red; }}
-            </style>
-        </head>
-        <body>
-            <h1 class="error">Authentication Failed</h1>
-            <p>{error_msg}</p>
-            <p><a href="/api/v1/auth/login">Try Again</a></p>
-        </body>
-        </html>
-        """
-        return HTMLResponse(content=html_content, status_code=400)
-    
-    try:
-        # Exchange code for tokens
-        token_response = await xero_service.exchange_code_for_tokens(code, state)
-        
-        # Get tenant information
-        tenant_info = await xero_service.get_tenant_info(token_response.access_token)
-        
-        # Save connection
-        if tenant_info:
-            tenant = tenant_info[0]
-            connection = xero_service.save_connection(
-                tenant_id=tenant['tenantId'],
-                tenant_name=tenant['tenantName'],
-                token_response=token_response
-            )
-            
-            html_content = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <title>Authentication Successful</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }}
-                    .success {{ color: green; }}
-                    .info {{ background: #f0f0f0; padding: 20px; margin: 20px; border-radius: 5px; }}
-                </style>
-            </head>
-            <body>
-                <h1 class="success">✅ Authentication Successful!</h1>
-                <div class="info">
-                    <h2>Connected to Xero</h2>
-                    <p><strong>Organization:</strong> {connection.tenant_name}</p>
-                    <p><strong>Tenant ID:</strong> {connection.tenant_id}</p>
-                    <p><strong>Token Expires:</strong> {token_response.expires_at.strftime('%Y-%m-%d %H:%M:%S UTC')}</p>
-                    <p><strong>Scopes:</strong> {token_response.scope}</p>
-                </div>
-                <p>You can now close this window and return to your application.</p>
-            </body>
-            </html>
-            """
-            return HTMLResponse(content=html_content)
-        else:
-            raise HTTPException(status_code=400, detail="No tenant information found")
-    
-    except ValueError as e:
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Authentication Failed</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }}
-                .error {{ color: red; }}
-            </style>
-        </head>
-        <body>
-            <h1 class="error">Authentication Failed</h1>
-            <p>{str(e)}</p>
-            <p><a href="/api/v1/auth/login">Try Again</a></p>
-        </body>
-        </html>
-        """
-        return HTMLResponse(content=html_content, status_code=400)
-    
-    except Exception as e:
-        html_content = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Authentication Failed</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }}
-                .error {{ color: red; }}
-            </style>
-        </head>
-        <body>
-            <h1 class="error">Authentication Failed</h1>
-            <p>An unexpected error occurred: {str(e)}</p>
-            <p><a href="/api/v1/auth/login">Try Again</a></p>
-        </body>
-        </html>
-        """
-        return HTMLResponse(content=html_content, status_code=500)
 
 
 @router.post("/refresh/{tenant_id}")

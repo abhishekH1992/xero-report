@@ -1,3 +1,10 @@
-from . import xero_auth
+from fastapi import APIRouter
 
-__all__ = ["xero_auth"] 
+from . import xero_auth, xero_reports, xero_callback
+
+router = APIRouter()
+router.include_router(xero_auth.router)
+router.include_router(xero_reports.router)
+router.include_router(xero_callback.router)
+
+__all__ = ["router"] 

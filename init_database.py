@@ -13,6 +13,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from app.database.database import init_db, engine
 from app.database.models import Base
 from pathlib import Path
+from sqlalchemy import text
 
 def main():
     """Initialize the database"""
@@ -24,13 +25,15 @@ def main():
     print(f"📁 Database directory: {db_dir.absolute()}")
     
     try:
-        # Create all tables
+        
+        # Create all tables with new schema
+        print("🏗️  Creating new tables with updated schema...")
         Base.metadata.create_all(bind=engine)
         print("✅ Database tables created successfully!")
         
         # Test database connection
         with engine.connect() as conn:
-            result = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
             tables = [row[0] for row in result]
             print(f"📋 Created tables: {', '.join(tables)}")
         

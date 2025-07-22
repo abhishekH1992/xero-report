@@ -121,6 +121,7 @@ class XeroAuthRepository:
         connection = self.get_connection(tenant_id)
         
         if connection:
+            old_token_hash = hashlib.sha256(connection.access_token.encode()).hexdigest()
             connection.access_token = access_token
             connection.refresh_token = refresh_token
             connection.expires_at = expires_at
@@ -132,7 +133,7 @@ class XeroAuthRepository:
             
             # Log token history
             self._log_token_history(connection, access_token, refresh_token, 
-                                   expires_at, scope, "refresh")
+                                   expires_at, scope, "refresh", old_token_hash=old_token_hash)
             
             return connection
         return None
@@ -159,6 +160,7 @@ class XeroAuthRepository:
         existing_connection = self.get_connection_any_status(tenant_id)
         
         if existing_connection:
+            old_token_hash = hashlib.sha256(existing_connection.access_token.encode()).hexdigest()
             # Update existing connection
             existing_connection.tenant_name = tenant_name
             existing_connection.access_token = access_token
@@ -174,7 +176,7 @@ class XeroAuthRepository:
             
             # Log token history
             self._log_token_history(existing_connection, access_token, refresh_token, 
-                                   expires_at, scope, "upsert_update")
+                                   expires_at, scope, "upsert_update", old_token_hash=old_token_hash)
             
             return existing_connection
         else:
@@ -237,21 +239,24 @@ class XeroAuthRepository:
     # Token History Operations
     def _log_token_history(self, connection: XeroConnection, access_token: str,
                           refresh_token: str, expires_at: datetime, scope: str,
-                          refresh_type: str):
+                          refresh_type: str, old_token_hash: Optional[str] = None, new_token_hash: Optional[str] = None):
         """Log token history for audit trail"""
         # Create hashes for security (don't store actual tokens in history)
         access_token_hash = hashlib.sha256(access_token.encode()).hexdigest()
         refresh_token_hash = hashlib.sha256(refresh_token.encode()).hexdigest()
-        
+        # Always set new_token_hash
+        if not new_token_hash:
+            new_token_hash = access_token_hash
         token_history = XeroTokenHistory(
             connection_id=connection.id,
             access_token_hash=access_token_hash,
             refresh_token_hash=refresh_token_hash,
             expires_at=expires_at,
             scope=scope,
-            refresh_type=refresh_type
+            refresh_type=refresh_type,
+            old_token_hash=old_token_hash,
+            new_token_hash=new_token_hash
         )
-        
         self.db.add(token_history)
         self.db.commit()
     

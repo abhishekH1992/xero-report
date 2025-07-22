@@ -331,6 +331,10 @@ class XeroAuthService:
         """
         Save Xero connection data to database
         
+        This method checks if a connection with the given tenant_id already exists.
+        If it exists, it updates the connection with new tokens and information.
+        If it doesn't exist, it creates a new connection.
+        
         Args:
             tenant_id: Xero tenant ID
             tenant_name: Xero tenant name
@@ -342,7 +346,7 @@ class XeroAuthService:
         if not token_response.expires_at:
             raise ValueError("Token response must have expires_at set")
             
-        return self.db_repo.create_connection(
+        return self.db_repo.upsert_connection(
             tenant_id=tenant_id,
             tenant_name=tenant_name,
             access_token=token_response.access_token,
@@ -404,4 +408,18 @@ class XeroAuthService:
         """Generate PKCE code challenge from code verifier"""
         sha256_hash = hashlib.sha256(code_verifier.encode('utf-8')).digest()
         code_challenge = base64.urlsafe_b64encode(sha256_hash).decode('utf-8').rstrip('=')
-        return code_challenge 
+        return code_challenge
+    
+    @classmethod
+    def get_service_dependency(cls):
+        """FastAPI dependency function for XeroAuthService"""
+        from fastapi import Depends
+        from sqlalchemy.orm import Session
+        from app.database.database import get_db
+        from app.database.repository import XeroAuthRepository
+        
+        def _get_service(db: Session = Depends(get_db)) -> XeroAuthService:
+            repo = XeroAuthRepository(db)
+            return cls(repo)
+        
+        return _get_service 

@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, List
 import os
+import json
 from pathlib import Path
 
 
@@ -19,22 +20,22 @@ class Settings(BaseSettings):
     app_name: str = "Finance Assistant"
     debug: bool = False
     
+    # API Security - will be loaded manually
+    api_key_list: List[str] = []
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"  # Ignore extra fields from environment
 
     def __init__(self, **kwargs):
         # Try to load .env file manually first
         self._load_env_file()
         super().__init__(**kwargs)
-        # Debug: Print environment variables
-        print(f"🔍 Environment check:")
-        print(f"   XERO_CLIENT_ID from env: {os.getenv('XERO_CLIENT_ID', 'NOT_FOUND')}")
-        print(f"   XERO_CLIENT_SECRET from env: {os.getenv('XERO_CLIENT_SECRET', 'NOT_FOUND')}")
-        print(f"   .env file path: {os.path.abspath('.env')}")
-        print(f"   Current working directory: {os.getcwd()}")
-        print(f"   Settings loaded - client_id: {self.xero_client_id[:10] if self.xero_client_id else 'NOT_SET'}...")
+        
+        # Load API keys from environment variable
+        self._load_api_keys()
 
     def _load_env_file(self):
         """Manually load .env file"""
@@ -46,7 +47,6 @@ class Settings(BaseSettings):
         
         for env_path in env_paths:
             if env_path.exists():
-                print(f"📁 Found .env file at: {env_path.absolute()}")
                 try:
                     with open(env_path, 'r', encoding='utf-8') as f:
                         for line in f:
@@ -54,12 +54,29 @@ class Settings(BaseSettings):
                             if line and not line.startswith('#') and '=' in line:
                                 key, value = line.split('=', 1)
                                 os.environ[key.strip()] = value.strip()
-                    print(f"✅ Loaded .env file from: {env_path}")
                     return
                 except Exception as e:
                     print(f"❌ Error loading .env file: {e}")
         
         print("❌ No .env file found in any of the expected locations")
+
+    def _load_api_keys(self):
+        """Load API keys from environment variable"""
+        api_keys_env = os.getenv("API_KEYS")
+        if api_keys_env:
+            try:
+                # Try to parse as JSON array
+                self.api_key_list = json.loads(api_keys_env)
+            except json.JSONDecodeError:
+                # If not JSON, try comma-separated string
+                self.api_key_list = [key.strip() for key in api_keys_env.split(",") if key.strip()]
+        
+        # Fallback to default keys if none provided
+        if not self.api_key_list:
+            self.api_key_list = [
+                "default-api-key-for-development",  # Replace with your actual keys
+            ]
+            print("⚠️ Using default API key. Set API_KEYS in .env for production use.")
 
 
 settings = Settings() 

@@ -4,7 +4,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-from app.api.v1.endpoints import xero_auth
+from app.api.v1.endpoints import router as v1_router
 from app.config import settings
 from app.database.database import init_db
 
@@ -77,8 +77,8 @@ async def health_check():
     return {"status": "healthy"}
 
 
-# Include routers
-app.include_router(xero_auth.router, prefix="/api/v1")
+# Include v1uter (includes all v1 endpoints with API key auth)
+app.include_router(v1_router, prefix="/api/v1")
 
 
 if __name__ == "__main__":
