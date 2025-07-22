@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     app_name: str = "Finance Assistant"
     debug: bool = False
     
+    # CORS settings
+    allowed_origins: List[str] = ["*"]  # Configure for production
+    
     # API Security - will be loaded manually
     api_key_list: List[str] = []
     
@@ -36,6 +39,9 @@ class Settings(BaseSettings):
         
         # Load API keys from environment variable
         self._load_api_keys()
+        
+        # Load CORS origins from environment variable
+        self._load_cors_origins()
 
     def _load_env_file(self):
         """Manually load .env file"""
@@ -77,6 +83,22 @@ class Settings(BaseSettings):
                 "default-api-key-for-development",  # Replace with your actual keys
             ]
             print("⚠️ Using default API key. Set API_KEYS in .env for production use.")
+
+    def _load_cors_origins(self):
+        """Load CORS origins from environment variable"""
+        cors_origins_env = os.getenv("ALLOWED_ORIGINS")
+        if cors_origins_env:
+            try:
+                # Try to parse as JSON array
+                self.allowed_origins = json.loads(cors_origins_env)
+            except json.JSONDecodeError:
+                # If not JSON, try comma-separated string
+                self.allowed_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+        
+        # Fallback to wildcard if none provided (not recommended for production)
+        if not self.allowed_origins or self.allowed_origins == ["*"]:
+            if not self.debug:
+                print("⚠️ Using wildcard CORS. Set ALLOWED_ORIGINS in .env for production use.")
 
 
 settings = Settings() 
