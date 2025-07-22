@@ -75,10 +75,10 @@ Thumbs.db
 commit_message.txt 
 
 # Database files (but keep app/database folder structure)
-database/*.db
-database/*.sqlite
-database/*.sqlite3.db
-*.sqlite
-*.sqlite3
+# database/*.db
+# database/*.sqlite
+# database/*.sqlite3.db
+# *.sqlite
+# *.sqlite3
 
 tmp
