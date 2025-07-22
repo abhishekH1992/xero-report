@@ -247,7 +247,6 @@ class XeroAuthRepository:
         # Always set new_token_hash
         if not new_token_hash:
             new_token_hash = access_token_hash
-
         token_history = XeroTokenHistory(
             connection_id=connection.id,
             access_token_hash=access_token_hash,
@@ -258,7 +257,6 @@ class XeroAuthRepository:
             old_token_hash=old_token_hash,
             new_token_hash=new_token_hash
         )
-
         self.db.add(token_history)
         self.db.commit()
     
