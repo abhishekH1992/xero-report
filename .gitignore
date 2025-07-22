@@ -80,5 +80,3 @@ commit_message.txt
 # database/*.sqlite3.db
 # *.sqlite
 # *.sqlite3
-
-tmp
