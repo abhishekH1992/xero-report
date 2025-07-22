@@ -290,7 +290,7 @@ async def get_aged_receivables(
         *[{"header": bucket, "key": bucket, "width": 15, "format": "currency"} for bucket in bucket_names],
         {"header": "Total", "key": "Total", "width": 15, "format": "currency"},
         {"header": "Comments", "key": "Comments", "width": 25, "format": "text"},
-        {"header": "System Comments", "key": "System Comments", "width": 80, "format": "text"}
+        {"header": "System Comments", "key": "System Comments", "width": 60, "format": "text"}
     ]
     
     # Export to Excel

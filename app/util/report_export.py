@@ -120,19 +120,19 @@ def export_report_to_excel(
         key=lambda r: (str(r.get("Company", "")).lower(), str(r.get("Contact", "")).lower())
     )
 
-    last_company = None
+    # last_company = None
 
     for idx, row_data in enumerate(data):
         company = row_data.get("Company", "")
         # Thick separator _only_ when company changes
-        if idx > 0 and company != last_company:
-            current_row += 1
-            for c in range(1, len(columns) + 1):
-                sep = ws.cell(row=current_row, column=c, value="")
-                sep.fill = PatternFill("solid", fgColor="D9D9D9")
-                sep.border = border
+        # if idx > 0 and company != last_company:
+        #     current_row += 1
+        #     for c in range(1, len(columns) + 1):
+        #         sep = ws.cell(row=current_row, column=c, value="")
+        #         sep.fill = PatternFill("solid", fgColor="D9D9D9")
+        #         sep.border = border
 
-        last_company = company
+        # last_company = company
         # Write the data row
         current_row += 1
 
