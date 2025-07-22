@@ -2,7 +2,7 @@
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 
-app = "finance-assistant-api"
+app = "finance-assistant"
 primary_region = "iad"
 
 [build]

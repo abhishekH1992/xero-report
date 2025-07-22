@@ -21,9 +21,9 @@ if ! flyctl auth whoami &> /dev/null; then
 fi
 
 # Check if app exists
-if ! flyctl apps list | grep -q "finance-assistant-api"; then
+if ! flyctl apps list | grep -q "finance-assistant"; then
     echo "📝 Creating new Fly.io app..."
-    flyctl apps create finance-assistant-api --org personal
+    flyctl apps create finance-assistant --org personal
 fi
 
 # Check if volume exists
@@ -50,7 +50,7 @@ flyctl deploy
 
 echo "✅ Deployment completed!"
 echo ""
-echo "🔗 Your app is available at: https://finance-assistant-api.fly.dev"
+echo "🔗 Your app is available at: https://finance-assistant.fly.dev"
 echo "📊 Check status with: flyctl status"
 echo "📝 View logs with: flyctl logs"
 echo "🌐 Open in browser with: flyctl open" 
