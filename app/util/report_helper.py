@@ -14,25 +14,42 @@ def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, 
     if days < 0:
         return "Current"
     
-    # Calculate days per period based on type
-    if period_type.lower() == "day":
-        days_per_period = period_of
-    elif period_type.lower() == "week":
-        days_per_period = period_of * 7
-    elif period_type.lower() == "month":
-        days_per_period = period_of * 30  # Approximate
+    # For month-based periods, use actual calendar months
+    if period_type.lower() == "month":
+        # Calculate months difference
+        months_diff = (report_date.year - due_date.year) * 12 + (report_date.month - due_date.month)
+        if report_date.day < due_date.day:
+            months_diff -= 1
+        
+        # Calculate which period this falls into
+        if months_diff <= 0:
+            return f"< 1 {period_type}"  # Current invoices go to < 1 Month
+        elif months_diff <= 1:
+            return f"1 {period_type}"
+        elif months_diff <= 2:
+            return f"2 {period_type}s"
+        elif months_diff <= 3:
+            return f"3 {period_type}s"
+        else:
+            return "Older"
     else:
-        days_per_period = period_of * 30  # Default to month
-    
-    # Calculate which period this falls into
-    for i in range(1, periods + 1):
-        if days <= i * days_per_period:
-            if i == 1:
-                return f"< 1 {period_type}"
-            else:
-                return f"{i-1} {period_type}{'s' if i-1 > 1 else ''}"
-    
-    return "Older"
+        # Calculate days per period based on type
+        if period_type.lower() == "day":
+            days_per_period = period_of
+        elif period_type.lower() == "week":
+            days_per_period = period_of * 7
+        else:
+            days_per_period = period_of * 30  # Default to month
+        
+        # Calculate which period this falls into
+        for i in range(1, periods + 1):
+            if days <= i * days_per_period:
+                if i == 1:
+                    return f"< 1 {period_type}"
+                else:
+                    return f"{i-1} {period_type}{'s' if i-1 > 1 else ''}"
+        
+        return "Older"
 
 
 def generate_bucket_names(periods: int, period_type: str) -> list:
@@ -130,7 +147,6 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
     
     # Calculate aging bucket
     bucket = calculate_aging_bucket(report_date, item_date, periods, period_of, period_type)
-    
     # Create a unique key that includes business unit and company
     if connection_name and business_type:
         key = f"{business_type}|{connection_name}|{contact_name}"
