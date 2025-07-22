@@ -107,7 +107,7 @@ async def get_aged_receivables(
                     # Paid invoice with future due date and zero amount due = credit
                     include_in_report = True
                     report_amount = total_amount  # Use total amount (will be made negative)
-                    report_date_field = report_date_obj  # Use report date to put in current column
+                    report_date_field = due_date  # Use actual due date for proper aging
                     is_negative = True  # Mark as negative to show as credit
                 
                 if include_in_report and report_date_field:
@@ -163,7 +163,7 @@ async def get_aged_receivables(
                     for invoice in contact_invoices_list:
                         item = type("Item", (), {})()
                         setattr(item, "contact", invoice.contact)
-                        setattr(item, "due_date", report_date_obj)  # Use report date to put in current column
+                        setattr(item, "due_date", getattr(invoice, 'due_date', report_date_obj))  # Use actual due date for proper aging
                         setattr(item, "amount_due", getattr(invoice, 'total', 0))  # Use total amount
                         setattr(item, "status", invoice.status)
                         setattr(item, "total", getattr(invoice, 'total', 0))
