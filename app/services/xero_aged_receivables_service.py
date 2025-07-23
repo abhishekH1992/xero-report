@@ -180,12 +180,29 @@ class XeroAgedReceivablesService:
                 invoice.date and invoice.date <= report_date):
                 all_invoices.append(invoice)
         
-        # Filter PAID invoices (DueDate > report_date)
+        # Filter PAID invoices with business logic:
+        # - DueDate > report_date
+        # - Issue date and Due date must be in the same month (to avoid showing invoices issued in one month but due in another)
         for invoice in paid_invoices:
             if (invoice.type == "ACCREC" and
                 invoice.status == "PAID" and
-                invoice.due_date and invoice.due_date > report_date):
-                all_invoices.append(invoice)
+                invoice.due_date and invoice.due_date > report_date and
+                invoice.date and invoice.due_date):
+                
+                # Check if issue date and due date are in the same month
+                issue_date = invoice.date
+                due_date = invoice.due_date
+                
+                # Convert to date objects if they're datetime objects
+                if hasattr(issue_date, 'date'):
+                    issue_date = issue_date.date()
+                if hasattr(due_date, 'date'):
+                    due_date = due_date.date()
+                
+                # Check if both dates are in the same month and year
+                if (issue_date.year == due_date.year and 
+                    issue_date.month == due_date.month):
+                    all_invoices.append(invoice)
         
         return all_invoices
     
