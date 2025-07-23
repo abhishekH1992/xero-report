@@ -70,25 +70,124 @@ class XeroAgedReceivablesService:
             }
             
         except Exception as e:
-            print(f"[XERO AGED RECEIVABLES SERVICE] Error: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Failed to fetch report data: {str(e)}")
     
     def _get_unpaid_invoices(self, accounting_api, tenant_id: str, date_for_xero: str) -> List:
-        """Fetch all unpaid invoices"""
-        where_clause = f'Type == "ACCREC" && ((AmountDue>0 && Status == "AUTHORISED" && Date <= DateTime({date_for_xero})) || (Status == "PAID" && DueDate > DateTime({date_for_xero})))'
+        """Fetch unpaid and paid invoices with optimized separate calls"""
         
-        invoices_response = accounting_api.get_invoices(
-            tenant_id,  # xero_tenant_id
-            empty,      # if_modified_since
-            where_clause,  # where
-            empty,      # order
-            empty,      # ids
-            empty,      # invoice_numbers
-            empty,      # contact_ids
-            empty,  # statuses
-        )
+        # Convert date string to datetime for comparison
+        from datetime import datetime
+        try:
+            year, month, day = map(int, date_for_xero.split(','))
+            report_date = datetime(year, month, day).date()
+        except Exception as e:
+            report_date = datetime.now().date()
         
-        return invoices_response.invoices or []
+        all_invoices = []
+        
+        # Call 1: Get AUTHORISED invoices with AmountDue > 0
+        unpaid_invoices = []
+        page = 1
+        page_size = 100
+        
+        while True:
+            try:
+                where_clause_unpaid = f'Type == "ACCREC" && Status == "AUTHORISED" && AmountDue > 0 && Date <= DateTime({date_for_xero})'
+                
+                invoices_response = accounting_api.get_invoices(
+                    tenant_id,  # xero_tenant_id
+                    empty,      # if_modified_since
+                    where_clause_unpaid,  # where
+                    empty,      # order
+                    empty,      # ids
+                    empty,      # invoice_numbers
+                    empty,      # contact_ids
+                    ["AUTHORISED"],  # statuses - more efficient than WHERE clause
+                    page,       # page
+                    empty,      # include_archived
+                    empty,      # created_by_my_app
+                    empty,      # unitdp
+                    "True",     # summary_only
+                    page_size,  # page_size
+                    empty       # search_term
+                )
+                
+                if not invoices_response.invoices:
+                    break
+                
+                unpaid_invoices.extend(invoices_response.invoices)
+                
+                if len(invoices_response.invoices) < page_size:
+                    break
+                
+                if page >= 100:  # Safety limit
+                    break
+                    
+                page += 1
+                
+            except Exception as e:
+                break
+        
+        # Call 2: Get PAID invoices with DueDate > report_date
+        paid_invoices = []
+        page = 1
+        
+        while True:
+            try:
+                where_clause_paid = f'Type == "ACCREC" && Status == "PAID" && DueDate > DateTime({date_for_xero})'
+                
+                invoices_response = accounting_api.get_invoices(
+                    tenant_id,  # xero_tenant_id
+                    empty,      # if_modified_since
+                    where_clause_paid,  # where
+                    empty,      # order
+                    empty,      # ids
+                    empty,      # invoice_numbers
+                    empty,      # contact_ids
+                    ["PAID"],   # statuses
+                    page,       # page
+                    empty,      # include_archived
+                    empty,      # created_by_my_app
+                    empty,      # unitdp
+                    "True",     # summary_only
+                    page_size,  # page_size
+                    empty       # search_term
+                )
+                
+                if not invoices_response.invoices:
+                    break
+                
+                paid_invoices.extend(invoices_response.invoices)
+                
+                if len(invoices_response.invoices) < page_size:
+                    break
+                
+                if page >= 100:  # Safety limit
+                    break
+                    
+                page += 1
+                
+            except Exception as e:
+                break
+        
+        # Combine and filter based on business logic
+        
+        # Filter AUTHORISED invoices (AmountDue > 0 and Date <= report_date)
+        for invoice in unpaid_invoices:
+            if (invoice.type == "ACCREC" and 
+                invoice.amount_due > 0 and 
+                invoice.status == "AUTHORISED" and
+                invoice.date and invoice.date <= report_date):
+                all_invoices.append(invoice)
+        
+        # Filter PAID invoices (DueDate > report_date)
+        for invoice in paid_invoices:
+            if (invoice.type == "ACCREC" and
+                invoice.status == "PAID" and
+                invoice.due_date and invoice.due_date > report_date):
+                all_invoices.append(invoice)
+        
+        return all_invoices
     
     def _get_credit_notes(self, accounting_api, tenant_id: str, date_for_xero: str) -> List:
         """Fetch all credit notes for the period"""

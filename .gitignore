@@ -64,6 +64,7 @@ Thumbs.db
 .env
 .env.*
 *.env
+.env-prod
 
 # Allow the example env file
 !.env.example

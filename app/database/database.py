@@ -8,8 +8,11 @@ from pathlib import Path
 db_dir = Path("database")
 db_dir.mkdir(exist_ok=True)
 
-# Database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///./database/finance_assistant.db"
+# Database URL - use environment variable for production
+SQLALCHEMY_DATABASE_URL = os.getenv(
+    "DATABASE_URL", 
+    "sqlite:///./database/finance_assistant.db"
+)
 
 # Create engine
 engine = create_engine(
