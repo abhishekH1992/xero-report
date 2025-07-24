@@ -1,3 +1,8 @@
+from datetime import datetime, timedelta
+from typing import List, Tuple, Dict, Any
+import calendar
+
+
 def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, period_type: str) -> str:
     """
     Calculate aging bucket based on configurable periods.
@@ -183,3 +188,175 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
     
     return report
 
+def calculate_date_ranges(report_date: str, period: int = 2, period_of: str = "Week") -> List[Tuple[str, str]]:
+    """
+    Calculate date ranges for CashFlow report.
+    
+    Args:
+        report_date: Report date in YYYY-MM-DD format
+        period: Number of periods to go back
+        period_of: Type of period (Week, Month, Year)
+    
+    Returns:
+        List of tuples containing (start_date, end_date) in YYYY-MM-DD format
+    """
+    try:
+        end_date = datetime.strptime(report_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise ValueError("Invalid report_date format. Use YYYY-MM-DD.")
+    
+    date_ranges = []
+    
+    for i in range(period):
+        if period_of.lower() == "week":
+            # Calculate week ranges (7 days each)
+            start_date = end_date - timedelta(days=6)
+            date_ranges.append((start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")))
+            end_date = start_date - timedelta(days=1)
+            
+        elif period_of.lower() == "month":
+            # Calculate month ranges
+            if end_date.day == 1:
+                # If end_date is first day of month, go to last day of previous month
+                if end_date.month == 1:
+                    start_date = datetime(end_date.year - 1, 12, 1).date()
+                else:
+                    start_date = datetime(end_date.year, end_date.month - 1, 1).date()
+            else:
+                # Start from first day of current month
+                start_date = datetime(end_date.year, end_date.month, 1).date()
+            
+            date_ranges.append((start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")))
+            
+            # Set end_date to last day of previous month
+            if start_date.month == 1:
+                end_date = datetime(start_date.year - 1, 12, 31).date()
+            else:
+                last_day = calendar.monthrange(start_date.year, start_date.month - 1)[1]
+                end_date = datetime(start_date.year, start_date.month - 1, last_day).date()
+                
+        elif period_of.lower() == "year":
+            # Calculate year ranges
+            start_date = datetime(end_date.year, 1, 1).date()
+            date_ranges.append((start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")))
+            end_date = datetime(end_date.year - 1, 12, 31).date()
+    
+    return date_ranges
+
+
+def filter_bank_accounts(accounts: List[Any]) -> List[Any]:
+    """
+    Filter bank accounts to only include ASB and ANZ banks based on account number.
+    
+    Args:
+        accounts: List of bank account objects from Xero API
+    
+    Returns:
+        Filtered list containing only ASB and ANZ accounts
+    """
+    filtered_accounts = []
+    
+    for account in accounts:
+        account_number = getattr(account, 'bank_account_number', '')
+        account_type = getattr(account, 'bank_account_type', '')
+        status = getattr(account, 'status', '')
+        
+        # Check if it's an active bank account
+        if account_type == "BANK" and status == "ACTIVE":
+            # ASB bank: account number starts with 12
+            if account_number.startswith('12'):
+                setattr(account, 'bank_name', 'ASB')
+                filtered_accounts.append(account)
+            # ANZ bank: account number starts with 01 or 06
+            elif account_number.startswith('01') or account_number.startswith('06'):
+                setattr(account, 'bank_name', 'ANZ')
+                filtered_accounts.append(account)
+    
+    return filtered_accounts
+
+
+def format_account_number(account_number: str) -> str:
+    """
+    Convert account number to human readable format.
+    
+    Args:
+        account_number: Raw account number (e.g., "123113013054200")
+    
+    Returns:
+        Formatted account number (e.g., "12-3113-0130542-00")
+    """
+    if not account_number:
+        return ""
+    
+    # Remove any non-digit characters
+    clean_number = ''.join(filter(str.isdigit, account_number))
+    
+    if len(clean_number) >= 14:
+        # Format: 2-4-6-remaining
+        return f"{clean_number[:2]}-{clean_number[2:6]}-{clean_number[6:12]}-{clean_number[12:]}"
+    elif len(clean_number) >= 12:
+        # Format: 2-4-6
+        return f"{clean_number[:2]}-{clean_number[2:6]}-{clean_number[6:]}"
+    elif len(clean_number) >= 8:
+        # Format: 2-4-remaining
+        return f"{clean_number[:2]}-{clean_number[2:6]}-{clean_number[6:]}"
+    else:
+        # Return as is if too short
+        return account_number
+
+
+def format_date_range_for_excel(start_date: str, end_date: str) -> str:
+    """
+    Format date range for Excel column headers.
+    
+    Args:
+        start_date: Start date in YYYY-MM-DD format
+        end_date: End date in YYYY-MM-DD format
+    
+    Returns:
+        Formatted string (e.g., "21'Jul 2025 - 15'Jul 2025")
+    """
+    try:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        
+        start_formatted = f"{start_dt.day}'{start_dt.strftime('%b')} {start_dt.year}"
+        end_formatted = f"{end_dt.day}'{end_dt.strftime('%b')} {end_dt.year}"
+        
+        return f"{start_formatted} - {end_formatted}"
+    except ValueError:
+        return f"{start_date} - {end_date}"
+
+
+def generate_cashflow_insights(bank_data: Dict[str, Any], date_ranges: List[Tuple[str, str]]) -> str:
+    """
+    Generate insights for the CashFlow report.
+    
+    Args:
+        bank_data: Dictionary containing bank balance data
+        date_ranges: List of date ranges used in the report
+    
+    Returns:
+        Formatted insights string
+    """
+    insights = []
+    
+    for i, (start_date, end_date) in enumerate(date_ranges):
+        period_key = f"{start_date}_{end_date}"
+        period_data = bank_data.get(period_key, {})
+        
+        if period_data:
+            opening_balance = period_data.get('opening_balance', 0)
+            closing_balance = period_data.get('closing_balance', 0)
+            difference = closing_balance - opening_balance
+            
+            period_label = format_date_range_for_excel(start_date, end_date)
+            
+            if difference > 0:
+                insights.append(f"{period_label} - Positive cash flow: ${difference:,.2f}")
+            elif difference < 0:
+                insights.append(f"{period_label} - Negative cash flow: ${difference:,.2f}")
+            else:
+                insights.append(f"{period_label} - No change in balance")
+    
+    return "\n".join(insights) if insights else "No significant cash flow patterns detected."
