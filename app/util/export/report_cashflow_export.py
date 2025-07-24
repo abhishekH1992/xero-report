@@ -7,8 +7,7 @@ from openpyxl.utils import get_column_letter
 
 from app.util.report_helper import (
     format_account_number, 
-    format_date_range_for_excel, 
-    generate_cashflow_insights
+    format_date_range_for_excel
 )
 
 
@@ -93,12 +92,17 @@ def create_bank_sheet(ws, bank_name: str, cashflow_data: Dict[str, Any],
     current_row += 1
     
     # Date ranges header row
-    ws.merge_cells(f"A{current_row}:B{current_row}")
-    ws[f"A{current_row}"] = "Account"
+    ws[f"A{current_row}"] = "Account Number"
     ws[f"A{current_row}"].font = header_font
     ws[f"A{current_row}"].fill = header_fill
     ws[f"A{current_row}"].alignment = header_alignment
     ws[f"A{current_row}"].border = border
+    
+    ws[f"B{current_row}"] = "Account Name"
+    ws[f"B{current_row}"].font = header_font
+    ws[f"B{current_row}"].fill = header_fill
+    ws[f"B{current_row}"].alignment = header_alignment
+    ws[f"B{current_row}"].border = border
     
     ws[f"C{current_row}"] = "Connection Name"
     ws[f"C{current_row}"].font = header_font
@@ -110,18 +114,28 @@ def create_bank_sheet(ws, bank_name: str, cashflow_data: Dict[str, Any],
     col_idx = 4
     for start_date, end_date in date_ranges:
         date_range_label = format_date_range_for_excel(start_date, end_date)
-        ws.merge_cells(f"{get_column_letter(col_idx)}{current_row}:{get_column_letter(col_idx+1)}{current_row}")
+        ws.merge_cells(f"{get_column_letter(col_idx)}{current_row}:{get_column_letter(col_idx+3)}{current_row}")
         ws[f"{get_column_letter(col_idx)}{current_row}"] = date_range_label
         ws[f"{get_column_letter(col_idx)}{current_row}"].font = header_font
         ws[f"{get_column_letter(col_idx)}{current_row}"].fill = header_fill
         ws[f"{get_column_letter(col_idx)}{current_row}"].alignment = header_alignment
         ws[f"{get_column_letter(col_idx)}{current_row}"].border = border
-        col_idx += 2
+        col_idx += 4
     
     # Set column widths
-    ws.column_dimensions['A'].width = 25
-    ws.column_dimensions['B'].width = 25
-    ws.column_dimensions['C'].width = 30
+    ws.column_dimensions['A'].width = 25  # Account Number
+    ws.column_dimensions['B'].width = 25  # Account Name
+    ws.column_dimensions['C'].width = 30  # Connection Name
+    
+    # Set width for amount columns (D onwards)
+    col_idx = 4
+    for start_date, end_date in date_ranges:
+        # Set width for each of the 4 amount columns per period
+        ws.column_dimensions[get_column_letter(col_idx)].width = 15      # Opening
+        ws.column_dimensions[get_column_letter(col_idx+1)].width = 15    # Cash Received
+        ws.column_dimensions[get_column_letter(col_idx+2)].width = 15    # Cash Spent
+        ws.column_dimensions[get_column_letter(col_idx+3)].width = 15    # Available
+        col_idx += 4
     
     current_row += 1
     
@@ -137,11 +151,21 @@ def create_bank_sheet(ws, bank_name: str, cashflow_data: Dict[str, Any],
         ws[f"{get_column_letter(col_idx)}{current_row}"].alignment = Alignment("center")
         ws[f"{get_column_letter(col_idx)}{current_row}"].border = border
         
-        ws[f"{get_column_letter(col_idx+1)}{current_row}"] = "Available"
+        ws[f"{get_column_letter(col_idx+1)}{current_row}"] = "Cash Received"
         ws[f"{get_column_letter(col_idx+1)}{current_row}"].font = Font(bold=True)
         ws[f"{get_column_letter(col_idx+1)}{current_row}"].alignment = Alignment("center")
         ws[f"{get_column_letter(col_idx+1)}{current_row}"].border = border
-        col_idx += 2
+        
+        ws[f"{get_column_letter(col_idx+2)}{current_row}"] = "Cash Spent"
+        ws[f"{get_column_letter(col_idx+2)}{current_row}"].font = Font(bold=True)
+        ws[f"{get_column_letter(col_idx+2)}{current_row}"].alignment = Alignment("center")
+        ws[f"{get_column_letter(col_idx+2)}{current_row}"].border = border
+        
+        ws[f"{get_column_letter(col_idx+3)}{current_row}"] = "Available"
+        ws[f"{get_column_letter(col_idx+3)}{current_row}"].font = Font(bold=True)
+        ws[f"{get_column_letter(col_idx+3)}{current_row}"].alignment = Alignment("center")
+        ws[f"{get_column_letter(col_idx+3)}{current_row}"].border = border
+        col_idx += 4
     
     current_row += 1
     
@@ -157,7 +181,7 @@ def create_bank_sheet(ws, bank_name: str, cashflow_data: Dict[str, Any],
                 # Write account and connection name
                 ws[f"A{current_row}"] = account_number
                 ws[f"A{current_row}"].border = border
-                ws[f"B{current_row}"] = ""
+                ws[f"B{current_row}"] = account_data.get('account_name', '')
                 ws[f"B{current_row}"].border = border
                 ws[f"C{current_row}"] = connection_name
                 ws[f"C{current_row}"].border = border
@@ -169,17 +193,27 @@ def create_bank_sheet(ws, bank_name: str, cashflow_data: Dict[str, Any],
                     period_data = account_data.get('periods', {}).get(period_key, {})
                     
                     opening_balance = period_data.get('opening_balance', 0)
+                    cash_received = period_data.get('cash_received', 0)
+                    cash_spent = period_data.get('cash_spent', 0)
                     closing_balance = period_data.get('closing_balance', 0)
                     
-                    ws[f"{get_column_letter(col_idx)}{current_row}"] = opening_balance
+                    ws[f"{get_column_letter(col_idx)}{current_row}"] = float(opening_balance) if opening_balance else 0
                     ws[f"{get_column_letter(col_idx)}{current_row}"].number_format = '"$"#,##0.00'
                     ws[f"{get_column_letter(col_idx)}{current_row}"].border = border
                     
-                    ws[f"{get_column_letter(col_idx+1)}{current_row}"] = closing_balance
+                    ws[f"{get_column_letter(col_idx+1)}{current_row}"] = float(cash_received) if cash_received else 0
                     ws[f"{get_column_letter(col_idx+1)}{current_row}"].number_format = '"$"#,##0.00'
                     ws[f"{get_column_letter(col_idx+1)}{current_row}"].border = border
                     
-                    col_idx += 2
+                    ws[f"{get_column_letter(col_idx+2)}{current_row}"] = float(cash_spent) if cash_spent else 0
+                    ws[f"{get_column_letter(col_idx+2)}{current_row}"].number_format = '"$"#,##0.00'
+                    ws[f"{get_column_letter(col_idx+2)}{current_row}"].border = border
+                    
+                    ws[f"{get_column_letter(col_idx+3)}{current_row}"] = float(closing_balance) if closing_balance else 0
+                    ws[f"{get_column_letter(col_idx+3)}{current_row}"].number_format = '"$"#,##0.00'
+                    ws[f"{get_column_letter(col_idx+3)}{current_row}"].border = border
+                    
+                    col_idx += 4
                 
                 current_row += 1
     
@@ -197,13 +231,19 @@ def create_bank_sheet(ws, bank_name: str, cashflow_data: Dict[str, Any],
         col_idx = 4
         for start_date, end_date in date_ranges:
             opening_total = 0
+            cash_received_total = 0
+            cash_spent_total = 0
             closing_total = 0
             
-            # Sum up all values in the column
+            # Sum up all values in the columns
             for row in range(total_row, current_row):
                 opening_val = ws[f"{get_column_letter(col_idx)}{row}"].value or 0
-                closing_val = ws[f"{get_column_letter(col_idx+1)}{row}"].value or 0
+                cash_received_val = ws[f"{get_column_letter(col_idx+1)}{row}"].value or 0
+                cash_spent_val = ws[f"{get_column_letter(col_idx+2)}{row}"].value or 0
+                closing_val = ws[f"{get_column_letter(col_idx+3)}{row}"].value or 0
                 opening_total += opening_val
+                cash_received_total += cash_received_val
+                cash_spent_total += cash_spent_val
                 closing_total += closing_val
             
             ws[f"{get_column_letter(col_idx)}{current_row}"] = opening_total
@@ -211,24 +251,24 @@ def create_bank_sheet(ws, bank_name: str, cashflow_data: Dict[str, Any],
             ws[f"{get_column_letter(col_idx)}{current_row}"].number_format = '"$"#,##0.00'
             ws[f"{get_column_letter(col_idx)}{current_row}"].border = border
             
-            ws[f"{get_column_letter(col_idx+1)}{current_row}"] = closing_total
+            ws[f"{get_column_letter(col_idx+1)}{current_row}"] = cash_received_total
             ws[f"{get_column_letter(col_idx+1)}{current_row}"].font = Font(bold=True)
             ws[f"{get_column_letter(col_idx+1)}{current_row}"].number_format = '"$"#,##0.00'
             ws[f"{get_column_letter(col_idx+1)}{current_row}"].border = border
             
-            col_idx += 2
+            ws[f"{get_column_letter(col_idx+2)}{current_row}"] = cash_spent_total
+            ws[f"{get_column_letter(col_idx+2)}{current_row}"].font = Font(bold=True)
+            ws[f"{get_column_letter(col_idx+2)}{current_row}"].number_format = '"$"#,##0.00'
+            ws[f"{get_column_letter(col_idx+2)}{current_row}"].border = border
+            
+            ws[f"{get_column_letter(col_idx+3)}{current_row}"] = closing_total
+            ws[f"{get_column_letter(col_idx+3)}{current_row}"].font = Font(bold=True)
+            ws[f"{get_column_letter(col_idx+3)}{current_row}"].number_format = '"$"#,##0.00'
+            ws[f"{get_column_letter(col_idx+3)}{current_row}"].border = border
+            
+            col_idx += 4
     
-    # Add insights section
-    current_row += 2
-    ws[f"A{current_row}"] = "System Summary"
-    ws[f"A{current_row}"].font = Font(bold=True, size=12)
-    current_row += 1
-    
-    # Generate insights for this bank
-    bank_insights = generate_cashflow_insights(cashflow_data, date_ranges)
-    ws[f"A{current_row}"] = bank_insights
-    ws[f"A{current_row}"].alignment = Alignment("left", "top", wrap_text=True)
-    ws[f"A{current_row}"].font = Font(size=10)
+
     
     # Auto-adjust row heights
     for row in ws.iter_rows():
@@ -291,6 +331,8 @@ def generate_cashflow_json_response(
                 period_info = {
                     "date_range": f"{start_date} - {end_date}",
                     "opening_balance": period_data.get('opening_balance', 0),
+                    "cash_received": period_data.get('cash_received', 0),
+                    "cash_spent": period_data.get('cash_spent', 0),
                     "closing_balance": period_data.get('closing_balance', 0)
                 }
                 bank_info["periods"].append(period_info)
@@ -298,8 +340,5 @@ def generate_cashflow_json_response(
             connection_info["banks"].append(bank_info)
         
         response["connections"].append(connection_info)
-    
-    # Generate system comments
-    response["system_comments"] = generate_cashflow_insights(cashflow_data, date_ranges)
     
     return response 

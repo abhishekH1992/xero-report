@@ -96,150 +96,244 @@ class XeroCashFlowService:
         """
         # Create API client
         accounting_api = create_xero_api_client(connection, str(connection.tenant_id), self.xero_auth_service)
-        finance_api = FinanceApi(accounting_api.api_client)
-        
-                # Get bank accounts
-        bank_accounts = self._get_bank_accounts(accounting_api, str(connection.tenant_id))
-        
-        # Filter for ASB and ANZ accounts
-        filtered_accounts = filter_bank_accounts(bank_accounts)
         
         connection_data = {
             "accounts": []
         }
         
-        # Process each bank account
-        for account in filtered_accounts:
-            account_data = self._process_bank_account(
-                account, finance_api, str(connection.tenant_id), date_ranges, report_date
-            )
-            connection_data["accounts"].append(account_data)
+        # Get bank summary data for each date range
+        for start_date, end_date in date_ranges:
+            try:
+                bank_summary_data = self._get_bank_summary_data(
+                    accounting_api, str(connection.tenant_id), start_date, end_date
+                )
+                
+                # Process each account in the summary
+                for account_id, account_data in bank_summary_data.items():
+                    # Check if this account is ASB or ANZ by getting account details
+                    account_details = self._get_account_details(accounting_api, str(connection.tenant_id), account_id)
+                    
+                    if account_details and self._is_asb_or_anz_account(account_details):
+                        # Add period data to existing account or create new one
+                        self._add_period_data_to_connection(connection_data, account_details, account_data, start_date, end_date)
+                        
+            except Exception as e:
+                print(f"[CASHFLOW] Error processing period {start_date}-{end_date}: {str(e)}")
+                continue
         
         return connection_data
     
-    def _get_bank_accounts(self, accounting_api: AccountingApi, tenant_id: str) -> List[Any]:
+
+    
+    def _get_bank_summary_data(
+        self, 
+        accounting_api: AccountingApi, 
+        tenant_id: str,
+        start_date: str, 
+        end_date: str
+    ) -> Dict[str, Any]:
         """
-        Get bank accounts from Xero.
+        Get bank summary report data for a specific date range.
         
         Args:
             accounting_api: Xero Accounting API client
             tenant_id: Xero tenant ID
-        
-        Returns:
-            List of bank account objects
-        """
-        try:
-            # Get accounts with filter for bank accounts
-            accounts_response = accounting_api.get_accounts(
-                tenant_id,
-                empty,  # if_modified_since
-                "BankAccountType == \"BANK\" AND Status == \"ACTIVE\"",  # where
-            )
-            return accounts_response.accounts
-        except Exception as e:
-            print(f"[CASHFLOW] Error getting bank accounts: {str(e)}")
-            return []
-    
-    def _process_bank_account(
-        self, 
-        account: Any, 
-        finance_api: FinanceApi, 
-        tenant_id: str,
-        date_ranges: List[Tuple[str, str]], 
-        report_date: str
-    ) -> Dict[str, Any]:
-        """
-        Process a single bank account to get balance data for all periods.
-        
-        Args:
-            account: Bank account object
-            finance_api: Xero Finance API client
-            date_ranges: List of date ranges
-            report_date: Report date
-        
-        Returns:
-            Dictionary containing account's balance data for all periods
-        """
-        account_data = {
-            "account_id": getattr(account, 'account_id', ''),
-            "account_number": getattr(account, 'bank_account_number', ''),
-            "account_name": getattr(account, 'name', ''),
-            "bank_name": getattr(account, 'bank_name', ''),
-            "periods": {}
-        }
-        
-        # Get balance data for each date range
-        for start_date, end_date in date_ranges:
-            try:
-                period_data = self._get_bank_statement_data(
-                    finance_api, tenant_id, account.account_id, start_date, end_date
-                )
-                period_key = f"{start_date}_{end_date}"
-                account_data["periods"][period_key] = period_data
-            except Exception as e:
-                print(f"[CASHFLOW] Error getting statement for account {account.account_id} period {start_date}-{end_date}: {str(e)}")
-                # Set default values if API call fails
-                period_key = f"{start_date}_{end_date}"
-                account_data["periods"][period_key] = {
-                    "opening_balance": 0,
-                    "closing_balance": 0
-                }
-        
-        return account_data
-    
-    def _get_bank_statement_data(
-        self, 
-        finance_api: FinanceApi, 
-        tenant_id: str,
-        account_id: str, 
-        start_date: str, 
-        end_date: str
-    ) -> Dict[str, float]:
-        """
-        Get bank statement data for a specific account and date range.
-        
-        Args:
-            finance_api: Xero Finance API client
-            account_id: Bank account ID
             start_date: Start date in YYYY-MM-DD format
             end_date: End date in YYYY-MM-DD format
         
         Returns:
-            Dictionary containing opening and closing balances
+            Dictionary containing bank summary data
         """
         try:
-            # Get bank statement using finance API
-            statement_response = finance_api.get_bank_statement_accounting(
-                tenant_id,      # xero_tenant_id
-                account_id,     # bank_account_id
-                start_date,     # from_date
-                end_date,       # to_date
-                "True"          # summary_only
+            from datetime import datetime
+            
+            # Convert string dates to datetime objects
+            from_date = datetime.strptime(start_date, "%Y-%m-%d")
+            to_date = datetime.strptime(end_date, "%Y-%m-%d")
+            
+            # Get bank summary report
+            report_response = accounting_api.get_report_bank_summary(
+                tenant_id,
+                from_date,
+                to_date
             )
+
+            bank_data = {}
             
-            # Extract balance data from response
-            opening_balance = 0
-            closing_balance = 0
+            if report_response and hasattr(report_response, 'reports') and report_response.reports:
+                report = report_response.reports[0]
+                
+                if hasattr(report, 'rows') and report.rows:
+                    for row in report.rows:
+                        # Handle Section rows that contain the actual bank account data
+                        if hasattr(row, 'row_type') and row.row_type.value == "Section" and hasattr(row, 'rows') and row.rows:
+                            for sub_row in row.rows:
+                                if hasattr(sub_row, 'row_type') and sub_row.row_type.value == "Row" and hasattr(sub_row, 'cells') and sub_row.cells:
+                                    # Extract account data from sub_row
+                                    account_name = ""
+                                    account_id = ""
+                                    opening_balance = 0
+                                    cash_received = 0
+                                    cash_spent = 0
+                                    closing_balance = 0
+                                    
+                                    if len(sub_row.cells) >= 5:
+                                        # Account name and ID
+                                        if sub_row.cells[0].attributes:
+                                            for attr in sub_row.cells[0].attributes:
+                                                if attr.id == "accountID":
+                                                    account_id = attr.value
+                                                    break
+                                        account_name = sub_row.cells[0].value
+                                        
+                                        # Balances
+                                        opening_balance = float(sub_row.cells[1].value or 0)
+                                        cash_received = float(sub_row.cells[2].value or 0)
+                                        cash_spent = float(sub_row.cells[3].value or 0)
+                                        closing_balance = float(sub_row.cells[4].value or 0)
+                                        
+                                        # Get account details to check if it's ASB or ANZ
+                                        if account_id:
+                                            try:
+                                                account_details = self._get_account_details(accounting_api, tenant_id, account_id)
+                                                if self._is_asb_or_anz_account(account_details):
+                                                    bank_data[account_id] = {
+                                                        'account_name': account_name,
+                                                        'bank_name': getattr(account_details, 'bank_name', ''),
+                                                        'opening_balance': opening_balance,
+                                                        'cash_received': cash_received,
+                                                        'cash_spent': cash_spent,
+                                                        'closing_balance': closing_balance
+                                                    }
+                                            except Exception as e:
+                                                print(f"[CASHFLOW] Error getting account details for {account_id}: {e}")
+                        
+                        # Handle direct Row rows (fallback)
+                        elif hasattr(row, 'row_type') and row.row_type.value == "Row" and hasattr(row, 'cells') and row.cells:
+                            # Extract account data from row
+                            account_name = ""
+                            account_id = ""
+                            opening_balance = 0
+                            cash_received = 0
+                            cash_spent = 0
+                            closing_balance = 0
+                            
+                            for i, cell in enumerate(row.cells):
+                                if i == 0:  # Bank account name
+                                    account_name = getattr(cell, 'value', '')
+                                    # Get account ID from attributes
+                                    if hasattr(cell, 'attributes') and cell.attributes:
+                                        for attr in cell.attributes:
+                                            if hasattr(attr, 'id') and attr.id == "accountID":
+                                                account_id = getattr(attr, 'value', '')
+                                elif i == 1:  # Opening balance
+                                    opening_balance = float(getattr(cell, 'value', '0'))
+                                elif i == 2:  # Cash received
+                                    cash_received = float(getattr(cell, 'value', '0'))
+                                elif i == 3:  # Cash spent
+                                    cash_spent = float(getattr(cell, 'value', '0'))
+                                elif i == 4:  # Closing balance
+                                    closing_balance = float(getattr(cell, 'value', '0'))
+                            
+                            if account_id:
+                                bank_data[account_id] = {
+                                    "account_name": account_name,
+                                    "opening_balance": opening_balance,
+                                    "cash_received": cash_received,
+                                    "cash_spent": cash_spent,
+                                    "closing_balance": closing_balance
+                                }
             
-            if statement_response and hasattr(statement_response, 'statements'):
-                statements = statement_response.statements
-                if statements:
-                    # Get the first statement for opening balance
-                    first_statement = statements[0]
-                    opening_balance = getattr(first_statement, 'start_balance', 0)
-                    
-                    # Get the last statement for closing balance
-                    last_statement = statements[-1]
-                    closing_balance = getattr(last_statement, 'end_balance', 0)
-            
-            return {
-                "opening_balance": float(opening_balance),
-                "closing_balance": float(closing_balance)
-            }
+            print(f"[CASHFLOW] Final bank_data: {bank_data}")
+            return bank_data
             
         except Exception as e:
-            print(f"[CASHFLOW] Error getting bank statement for account {account_id}: {str(e)}")
-            return {
-                "opening_balance": 0,
-                "closing_balance": 0
+            print(f"[CASHFLOW] Error getting bank summary for period {start_date}-{end_date}: {str(e)}")
+            return {}
+    
+    def _get_account_details(self, accounting_api: AccountingApi, tenant_id: str, account_id: str) -> Any:
+        """
+        Get account details by account ID.
+        
+        Args:
+            accounting_api: Xero Accounting API client
+            tenant_id: Xero tenant ID
+            account_id: Account ID
+        
+        Returns:
+            Account object or None
+        """
+        try:
+            account_response = accounting_api.get_account(tenant_id, account_id)
+            if account_response and hasattr(account_response, 'accounts') and account_response.accounts:
+                return account_response.accounts[0]
+            return None
+        except Exception as e:
+            print(f"[CASHFLOW] Error getting account details for {account_id}: {str(e)}")
+            return None
+    
+    def _is_asb_or_anz_account(self, account: Any) -> bool:
+        """
+        Check if account is ASB or ANZ based on account number.
+        
+        Args:
+            account: Account object
+        
+        Returns:
+            True if ASB or ANZ account, False otherwise
+        """
+        account_number = getattr(account, 'bank_account_number', '')
+        
+        # ASB bank: account number starts with 12
+        if account_number.startswith('12'):
+            setattr(account, 'bank_name', 'ASB')
+            return True
+        # ANZ bank: account number starts with 01 or 06
+        elif account_number.startswith('01') or account_number.startswith('06'):
+            setattr(account, 'bank_name', 'ANZ')
+            return True
+        
+        return False
+    
+    def _add_period_data_to_connection(self, connection_data: Dict[str, Any], account_details: Any, 
+                                      period_data: Dict[str, Any], start_date: str, end_date: str):
+        """
+        Add period data to connection data structure.
+        
+        Args:
+            connection_data: Connection data dictionary
+            account_details: Account details object
+            period_data: Period data from bank summary
+            start_date: Start date
+            end_date: End date
+        """
+        account_id = getattr(account_details, 'account_id', '')
+        account_number = getattr(account_details, 'bank_account_number', '')
+        bank_name = getattr(account_details, 'bank_name', '')
+        
+        # Find existing account or create new one
+        existing_account = None
+        for account in connection_data["accounts"]:
+            if account["account_id"] == account_id:
+                existing_account = account
+                break
+        
+        if not existing_account:
+            # Create new account entry
+            existing_account = {
+                "account_id": account_id,
+                "account_number": account_number,
+                "account_name": getattr(account_details, 'name', ''),
+                "bank_name": bank_name,
+                "periods": {}
             }
+            connection_data["accounts"].append(existing_account)
+        
+        # Add period data
+        period_key = f"{start_date}_{end_date}"
+        existing_account["periods"][period_key] = {
+            "opening_balance": period_data.get("opening_balance", 0),
+            "cash_received": period_data.get("cash_received", 0),
+            "cash_spent": period_data.get("cash_spent", 0),
+            "closing_balance": period_data.get("closing_balance", 0)
+        }

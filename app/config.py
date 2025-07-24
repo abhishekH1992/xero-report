@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # Xero API URLs
     xero_auth_url: str = "https://login.xero.com/identity/connect/authorize"
     xero_token_url: str = "https://identity.xero.com/connect/token"
-    xero_scope: str = "offline_access accounting.transactions accounting.contacts"
+    xero_scope: str = "offline_access accounting.transactions accounting.contacts accounting.reports.read"
     
     # Application settings
     app_name: str = "Finance Assistant"
