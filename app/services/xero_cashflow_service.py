@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Tuple
 from datetime import datetime
-from xero_python.accounting.api.accounting_api import AccountingApi
+from xero_python.accounting.api.accounting_api import AccountingApi, empty
 from xero_python.finance.api.finance_api import FinanceApi
 from xero_python.api_client import ApiClient
 
@@ -98,8 +98,8 @@ class XeroCashFlowService:
         accounting_api = create_xero_api_client(connection, str(connection.tenant_id), self.xero_auth_service)
         finance_api = FinanceApi(accounting_api.api_client)
         
-        # Get bank accounts
-        bank_accounts = self._get_bank_accounts(accounting_api)
+                # Get bank accounts
+        bank_accounts = self._get_bank_accounts(accounting_api, str(connection.tenant_id))
         
         # Filter for ASB and ANZ accounts
         filtered_accounts = filter_bank_accounts(bank_accounts)
@@ -111,18 +111,19 @@ class XeroCashFlowService:
         # Process each bank account
         for account in filtered_accounts:
             account_data = self._process_bank_account(
-                account, finance_api, date_ranges, report_date
+                account, finance_api, str(connection.tenant_id), date_ranges, report_date
             )
             connection_data["accounts"].append(account_data)
         
         return connection_data
     
-    def _get_bank_accounts(self, accounting_api: AccountingApi) -> List[Any]:
+    def _get_bank_accounts(self, accounting_api: AccountingApi, tenant_id: str) -> List[Any]:
         """
         Get bank accounts from Xero.
         
         Args:
             accounting_api: Xero Accounting API client
+            tenant_id: Xero tenant ID
         
         Returns:
             List of bank account objects
@@ -130,7 +131,9 @@ class XeroCashFlowService:
         try:
             # Get accounts with filter for bank accounts
             accounts_response = accounting_api.get_accounts(
-                where="BankAccountType == \"BANK\" AND Status == \"ACTIVE\""
+                tenant_id,
+                empty,  # if_modified_since
+                "BankAccountType == \"BANK\" AND Status == \"ACTIVE\"",  # where
             )
             return accounts_response.accounts
         except Exception as e:
@@ -141,6 +144,7 @@ class XeroCashFlowService:
         self, 
         account: Any, 
         finance_api: FinanceApi, 
+        tenant_id: str,
         date_ranges: List[Tuple[str, str]], 
         report_date: str
     ) -> Dict[str, Any]:
@@ -168,7 +172,7 @@ class XeroCashFlowService:
         for start_date, end_date in date_ranges:
             try:
                 period_data = self._get_bank_statement_data(
-                    finance_api, account.account_id, start_date, end_date
+                    finance_api, tenant_id, account.account_id, start_date, end_date
                 )
                 period_key = f"{start_date}_{end_date}"
                 account_data["periods"][period_key] = period_data
@@ -186,6 +190,7 @@ class XeroCashFlowService:
     def _get_bank_statement_data(
         self, 
         finance_api: FinanceApi, 
+        tenant_id: str,
         account_id: str, 
         start_date: str, 
         end_date: str
@@ -205,9 +210,11 @@ class XeroCashFlowService:
         try:
             # Get bank statement using finance API
             statement_response = finance_api.get_bank_statement_accounting(
-                account_id=account_id,
-                from_date=start_date,
-                to_date=end_date
+                tenant_id,      # xero_tenant_id
+                account_id,     # bank_account_id
+                start_date,     # from_date
+                end_date,       # to_date
+                "True"          # summary_only
             )
             
             # Extract balance data from response
