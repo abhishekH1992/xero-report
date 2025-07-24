@@ -104,7 +104,7 @@ def create_bank_sheet(ws, bank_name: str, cashflow_data: Dict[str, Any],
     ws[f"B{current_row}"].alignment = header_alignment
     ws[f"B{current_row}"].border = border
     
-    ws[f"C{current_row}"] = "Connection Name"
+    ws[f"C{current_row}"] = "Company"
     ws[f"C{current_row}"].font = header_font
     ws[f"C{current_row}"].fill = header_fill
     ws[f"C{current_row}"].alignment = header_alignment
@@ -125,7 +125,7 @@ def create_bank_sheet(ws, bank_name: str, cashflow_data: Dict[str, Any],
     # Set column widths
     ws.column_dimensions['A'].width = 25  # Account Number
     ws.column_dimensions['B'].width = 25  # Account Name
-    ws.column_dimensions['C'].width = 30  # Connection Name
+    ws.column_dimensions['C'].width = 30  # Company Name
     
     # Set width for amount columns (D onwards)
     col_idx = 4

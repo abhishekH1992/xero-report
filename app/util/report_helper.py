@@ -277,13 +277,18 @@ def filter_bank_accounts(accounts: List[Any]) -> List[Any]:
 
 def format_account_number(account_number: str) -> str:
     """
-    Convert account number to human readable format.
+    Convert account number to New Zealand bank account format.
     
     Args:
         account_number: Raw account number (e.g., "123113013054200")
     
     Returns:
         Formatted account number (e.g., "12-3113-0130542-00")
+        Format: BB-bbbb-AAAAAAA-SSS
+        Where: BB = bank code (2 digits)
+               bbbb = branch code (4 digits) 
+               AAAAAAA = account number (7 digits)
+               SSS = suffix (3 digits, sometimes 2 with leading zero)
     """
     if not account_number:
         return ""
@@ -291,15 +296,20 @@ def format_account_number(account_number: str) -> str:
     # Remove any non-digit characters
     clean_number = ''.join(filter(str.isdigit, account_number))
     
-    if len(clean_number) >= 14:
-        # Format: 2-4-6-remaining
-        return f"{clean_number[:2]}-{clean_number[2:6]}-{clean_number[6:12]}-{clean_number[12:]}"
-    elif len(clean_number) >= 12:
-        # Format: 2-4-6
+    if len(clean_number) >= 16:
+        # Full format: BB-bbbb-AAAAAAA-SSS (16 digits)
+        # Example: 123244001865700 -> 12-3244-0018657-00
+        return f"{clean_number[:2]}-{clean_number[2:6]}-{clean_number[6:13]}-{clean_number[13:16]}"
+    elif len(clean_number) >= 13:
+        # Format: BB-bbbb-AAAAAAA (13 digits)
+        # Example: 01019400710472000 -> 01-0194-00710472-000
+        return f"{clean_number[:2]}-{clean_number[2:6]}-{clean_number[6:13]}-{clean_number[13:]}"
+    elif len(clean_number) >= 10:
+        # Format: BB-bbbb-AAAA (10 digits)
         return f"{clean_number[:2]}-{clean_number[2:6]}-{clean_number[6:]}"
-    elif len(clean_number) >= 8:
-        # Format: 2-4-remaining
-        return f"{clean_number[:2]}-{clean_number[2:6]}-{clean_number[6:]}"
+    elif len(clean_number) >= 6:
+        # Format: BB-bbbb (6 digits)
+        return f"{clean_number[:2]}-{clean_number[2:]}"
     else:
         # Return as is if too short
         return account_number
@@ -326,37 +336,3 @@ def format_date_range_for_excel(start_date: str, end_date: str) -> str:
         return f"{start_formatted} - {end_formatted}"
     except ValueError:
         return f"{start_date} - {end_date}"
-
-
-def generate_cashflow_insights(bank_data: Dict[str, Any], date_ranges: List[Tuple[str, str]]) -> str:
-    """
-    Generate insights for the CashFlow report.
-    
-    Args:
-        bank_data: Dictionary containing bank balance data
-        date_ranges: List of date ranges used in the report
-    
-    Returns:
-        Formatted insights string
-    """
-    insights = []
-    
-    for i, (start_date, end_date) in enumerate(date_ranges):
-        period_key = f"{start_date}_{end_date}"
-        period_data = bank_data.get(period_key, {})
-        
-        if period_data:
-            opening_balance = period_data.get('opening_balance', 0)
-            closing_balance = period_data.get('closing_balance', 0)
-            difference = closing_balance - opening_balance
-            
-            period_label = format_date_range_for_excel(start_date, end_date)
-            
-            if difference > 0:
-                insights.append(f"{period_label} - Positive cash flow: ${difference:,.2f}")
-            elif difference < 0:
-                insights.append(f"{period_label} - Negative cash flow: ${difference:,.2f}")
-            else:
-                insights.append(f"{period_label} - No change in balance")
-    
-    return "\n".join(insights) if insights else "No significant cash flow patterns detected."
