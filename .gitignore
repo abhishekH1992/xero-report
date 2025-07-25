@@ -65,6 +65,7 @@ Thumbs.db
 .env.*
 *.env
 .env-prod
+.env-before-multi-app
 
 # Allow the example env file
 !.env.example

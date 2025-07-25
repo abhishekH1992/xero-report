@@ -1,13 +1,14 @@
 from app.models.xero_auth import XeroTokenResponse
 from datetime import datetime
 
-def register_xero_token_handlers(api_client, token_dict, tenant_id, xero_service):
+def register_xero_token_handlers(api_client, token_dict, tenant_id, xero_service, app_id=None):
     """
     Register token getter and saver for the Xero SDK client.
     - api_client: The Xero ApiClient instance
     - token_dict: The current token dictionary
     - tenant_id: The Xero tenant ID
     - xero_service: The XeroAuthService instance for persistence
+    - app_id: The Xero app ID for multi-app support
     """
     @api_client.oauth2_token_getter
     def obtain_xero_oauth2_token():
@@ -52,4 +53,4 @@ def register_xero_token_handlers(api_client, token_dict, tenant_id, xero_service
                 id_token=new_token.get("id_token"),
                 expires_at=final_expires_at,
             )
-            xero_service.update_connection_tokens(tenant_id, token_response)
+            xero_service.update_connection_tokens(tenant_id, token_response, app_id)
