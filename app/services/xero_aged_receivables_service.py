@@ -32,7 +32,7 @@ class XeroAgedReceivablesService:
             periods: Number of aging periods
             period_of: Duration of each period
             period_type: Type of period (Day, Week, Month)
-            app_id: Optional Xero app ID (1-4) for multi-app support
+            app_id: Optional Xero app ID (1-2) for multi-app support
             
         Returns:
             Dict containing invoices, credit_notes, and overpayments

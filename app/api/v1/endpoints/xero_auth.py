@@ -22,7 +22,7 @@ get_xero_auth_service = XeroAuthService.get_service_dependency()
 @router.get("/login")
 async def login(
     use_pkce: bool = Query(True, description="Use PKCE for enhanced security"),
-    app_id: int = Query(1, ge=1, le=4, description="Xero app ID (1-4)"),
+    app_id: int = Query(1, ge=1, le=2, description="Xero app ID (1-2)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """
@@ -50,7 +50,7 @@ async def login(
 
 @router.get("/login/{app_id}")
 async def login_with_app(
-    app_id: int = Path(..., ge=1, le=4, description="Xero app ID (1-4)"),
+    app_id: int = Path(..., ge=1, le=2, description="Xero app ID (1-2)"),
     use_pkce: bool = Query(True, description="Use PKCE for enhanced security"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
@@ -82,7 +82,7 @@ async def login_with_app(
 @router.get("/login/redirect")
 async def login_redirect(
     use_pkce: bool = Query(True, description="Use PKCE for enhanced security"),
-    app_id: int = Query(1, ge=1, le=4, description="Xero app ID (1-4)"),
+    app_id: int = Query(1, ge=1, le=2, description="Xero app ID (1-2)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """
@@ -102,7 +102,7 @@ async def login_redirect(
 @router.post("/refresh/{tenant_id}")
 async def refresh_token(
     tenant_id: str,
-    app_id: Optional[int] = Query(None, ge=1, le=4, description="Xero app ID (1-4)"),
+    app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """
@@ -159,7 +159,7 @@ async def refresh_token(
 
 @router.get("/connections")
 async def list_connections(
-    app_id: Optional[int] = Query(None, ge=1, le=4, description="Filter by app ID"),
+    app_id: Optional[int] = Query(None, ge=1, le=2, description="Filter by app ID"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """List all stored Xero connections from database, optionally filtered by app"""
@@ -191,7 +191,7 @@ async def list_connections(
 @router.get("/connections/{tenant_id}")
 async def get_connection(
     tenant_id: str,
-    app_id: Optional[int] = Query(None, ge=1, le=4, description="Xero app ID (1-4)"),
+    app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """Get specific connection details from database"""
@@ -215,7 +215,7 @@ async def get_connection(
 @router.delete("/connections/{tenant_id}")
 async def delete_connection(
     tenant_id: str,
-    app_id: Optional[int] = Query(None, ge=1, le=4, description="Xero app ID (1-4)"),
+    app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """Delete a stored connection from database"""
@@ -229,7 +229,7 @@ async def delete_connection(
 @router.post("/connections/{tenant_id}/deactivate")
 async def deactivate_connection(
     tenant_id: str,
-    app_id: Optional[int] = Query(None, ge=1, le=4, description="Xero app ID (1-4)"),
+    app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """Deactivate a connection (soft delete)"""
@@ -244,7 +244,7 @@ async def deactivate_connection(
 async def get_token_history(
     tenant_id: str,
     limit: int = Query(10, description="Number of history records to return"),
-    app_id: Optional[int] = Query(None, ge=1, le=4, description="Xero app ID (1-4)"),
+    app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """Get token refresh history for a connection"""

@@ -26,7 +26,7 @@ async def get_aged_receivables(
     periods: int = Query(4, description="Number of aging periods"),
     period_of: int = Query(1, description="Duration of each period"),
     period_type: str = Query("Month", description="Type of period (Day, Week, Month)"),
-    app_id: Optional[int] = Query(None, ge=1, le=4, description="Filter by Xero app ID (1-4)"),
+    app_id: Optional[int] = Query(None, ge=1, le=2, description="Filter by Xero app ID (1-2)"),
     aged_receivables_service: XeroAgedReceivablesService = Depends(get_aged_receivables_service),
     xero_auth_service: XeroAuthService = Depends(get_xero_auth_service),
     connection_id: str = Query(None, description="Connection ID")
@@ -257,7 +257,10 @@ async def get_aged_receivables(
                 )
                 
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             print(f"[XERO REPORT] Error processing connection {connection.tenant_name} (App {connection.app_id}): {str(e)}")
+            print(f"[XERO REPORT] Full error details: {error_details}")
             # Continue with other connections even if one fails
             continue
 

@@ -30,15 +30,27 @@ class XeroAuthService:
     
     def get_app_credentials(self, app_id: int) -> tuple[str, str]:
         """Get client credentials for specific app"""
-        app_config = self.app_manager.get_app_config(app_id)
-        return app_config["client_id"], app_config["client_secret"]
+        try:
+            app_config = self.app_manager.get_app_config(app_id)
+            client_id = app_config["client_id"]
+            client_secret = app_config["client_secret"]
+            
+            # Validate that credentials are not empty
+            if not client_id or not client_secret:
+                raise ValueError(f"App {app_id} credentials are empty or not configured")
+                
+            return client_id, client_secret
+        except KeyError as e:
+            raise ValueError(f"App {app_id} configuration missing required field: {e}")
+        except Exception as e:
+            raise ValueError(f"Failed to get app {app_id} credentials: {e}")
     
     def generate_auth_url(self, app_id: int = 1, use_pkce: bool = True) -> tuple[str, XeroAuthState]:
         """
         Generate authorization URL for specific Xero app
         
         Args:
-            app_id: Xero app ID (1-4)
+            app_id: Xero app ID (1-2)
             use_pkce: Whether to use PKCE (Proof Key for Code Exchange) for enhanced security
             
         Returns:
@@ -84,7 +96,7 @@ class XeroAuthService:
         Args:
             code: Authorization code from Xero
             state: State parameter for verification
-            app_id: Xero app ID (1-4)
+            app_id: Xero app ID (1-2)
             
         Returns:
             XeroTokenResponse: Token response with access and refresh tokens
@@ -185,7 +197,7 @@ class XeroAuthService:
         
         Args:
             refresh_token: The refresh token to use
-            app_id: Xero app ID (1-4)
+            app_id: Xero app ID (1-2)
             tenant_id: Optional tenant ID for logging purposes
             
         Returns:
@@ -359,7 +371,7 @@ class XeroAuthService:
             tenant_id: Xero tenant ID
             tenant_name: Xero tenant name
             token_response: Token response from OAuth2 flow
-            app_id: Xero app ID (1-4)
+            app_id: Xero app ID (1-2)
             
         Returns:
             DBXeroConnection: Saved connection data

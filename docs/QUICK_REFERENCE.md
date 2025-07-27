@@ -14,13 +14,7 @@ XERO_APP1_CLIENT_SECRET=your_app1_client_secret
 XERO_APP2_CLIENT_ID=your_app2_client_id
 XERO_APP2_CLIENT_SECRET=your_app2_client_secret
 
-# Xero App 3 Configuration
-XERO_APP3_CLIENT_ID=your_app3_client_id
-XERO_APP3_CLIENT_SECRET=your_app3_client_secret
 
-# Xero App 4 Configuration
-XERO_APP4_CLIENT_ID=your_app4_client_id
-XERO_APP4_CLIENT_SECRET=your_app4_client_secret
 
 # App Distribution Strategy
 XERO_APP_DISTRIBUTION_MODE=round_robin
@@ -40,21 +34,21 @@ python scripts/migrate_to_multi_app.py
 ```http
 GET /api/v1/auth/login/{app_id}
 ```
-- `app_id`: 1-4 (Xero app ID)
+- `app_id`: 1-2 (Xero app ID)
 - Returns authorization URL for the specified app
 
 #### Handle OAuth2 Callback
 ```http
 GET /api/v1/auth/callback?code={code}&state={state}&app_id={app_id}
 ```
-- `app_id`: 1-4 (Xero app ID)
+- `app_id`: 1-2 (Xero app ID)
 - Exchanges authorization code for tokens using the specified app
 
 #### Refresh Token
 ```http
 POST /api/v1/auth/refresh/{tenant_id}?app_id={app_id}
 ```
-- `app_id`: Optional (1-4)
+- `app_id`: Optional (1-2)
 - Refreshes token for the specified tenant and app
 
 ### Connection Management
@@ -63,21 +57,21 @@ POST /api/v1/auth/refresh/{tenant_id}?app_id={app_id}
 ```http
 GET /api/v1/auth/connections?app_id={app_id}
 ```
-- `app_id`: Optional (1-4) - Filter by app
+- `app_id`: Optional (1-2) - Filter by app
 - Returns all connections, optionally filtered by app
 
 #### Get Connection Details
 ```http
 GET /api/v1/auth/connections/{tenant_id}?app_id={app_id}
 ```
-- `app_id`: Optional (1-4)
+- `app_id`: Optional (1-2)
 - Returns connection details for specific tenant and app
 
 #### Delete Connection
 ```http
 DELETE /api/v1/auth/connections/{tenant_id}?app_id={app_id}
 ```
-- `app_id`: Optional (1-4)
+- `app_id`: Optional (1-2)
 - Deletes connection for specific tenant and app
 
 ### Reports
@@ -86,7 +80,7 @@ DELETE /api/v1/auth/connections/{tenant_id}?app_id={app_id}
 ```http
 GET /api/v1/reports/aged-receivables?app_id={app_id}
 ```
-- `app_id`: Optional (1-4) - Filter by app
+- `app_id`: Optional (1-2) - Filter by app
 - Generates aged receivables report for connections in the specified app
 
 ### Statistics
@@ -127,8 +121,8 @@ connection = auth_service.save_connection(
 # Get connection by tenant and app
 connection = auth_service.get_connection("tenant123", app_id=2)
 
-# Get all connections for app 3
-connections = auth_service.get_connections_by_app(3)
+# Get all connections for app 2
+connections = auth_service.get_connections_by_app(2)
 ```
 
 ### Using XeroAppManager
@@ -149,7 +143,7 @@ app_id = app_manager.get_app_id_for_tenant("tenant123", existing_connections)
 
 # Get app statistics
 stats = app_manager.get_app_stats(connections)
-# Returns: {1: 5, 2: 3, 3: 4, 4: 2}
+# Returns: {1: 5, 2: 3}
 ```
 
 ## Database Schema
@@ -190,7 +184,7 @@ CREATE INDEX idx_xero_connections_tenant_app ON xero_connections(tenant_id, app_
 ### Manual Mapping
 - Use `XERO_TENANT_APP_MAPPING` environment variable
 - Format: `tenant_id:app_id,tenant_id:app_id`
-- Example: `tenant1:2,tenant2:3,tenant3:1`
+- Example: `tenant1:2,tenant2:1`
 
 ## Monitoring
 
@@ -210,7 +204,7 @@ CREATE INDEX idx_xero_connections_tenant_app ON xero_connections(tenant_id, app_
 ### Common Issues
 
 1. **Invalid app_id error**
-   - Ensure app_id is between 1-4
+   - Ensure app_id is between 1-2
    - Check that app credentials are configured in .env
 
 2. **Connection not found**
@@ -234,13 +228,13 @@ curl "http://localhost:8000/api/v1/auth/app-stats"
 # List connections for app 2
 curl "http://localhost:8000/api/v1/auth/connections?app_id=2"
 
-# Test OAuth2 flow for app 3
-curl "http://localhost:8000/api/v1/auth/login/3"
+# Test OAuth2 flow for app 2
+curl "http://localhost:8000/api/v1/auth/login/2"
 ```
 
 ## Migration Checklist
 
-- [ ] Create 4 Xero apps in Developer Portal
+- [ ] Create 2 Xero apps in Developer Portal
 - [ ] Update .env with all app credentials
 - [ ] Run database migration script
 - [ ] Test OAuth2 flow for each app

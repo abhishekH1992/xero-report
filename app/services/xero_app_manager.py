@@ -11,17 +11,30 @@ class XeroAppManager:
         self.app_configs = {
             1: {"client_id": settings.xero_app1_client_id, "client_secret": settings.xero_app1_client_secret},
             2: {"client_id": settings.xero_app2_client_id, "client_secret": settings.xero_app2_client_secret},
-            3: {"client_id": settings.xero_app3_client_id, "client_secret": settings.xero_app3_client_secret},
-            4: {"client_id": settings.xero_app4_client_id, "client_secret": settings.xero_app4_client_secret},
         }
+        
+        # Validate app configurations during initialization
+        for app_id, config in self.app_configs.items():
+            if not config["client_id"] or not config["client_secret"]:
+                print(f"Warning: App {app_id} credentials are empty or not configured")
+                print(f"  client_id: {config['client_id']}")
+                print(f"  client_secret: {'*' * len(config['client_secret']) if config['client_secret'] else 'None'}")
+        
         self.tenant_mapping = settings.get_tenant_app_mapping()
         self.distribution_mode = settings.xero_app_distribution_mode
     
     def get_app_config(self, app_id: int) -> Dict[str, str]:
         """Get app configuration by app ID"""
         if app_id not in self.app_configs:
-            raise ValueError(f"Invalid app_id: {app_id}")
-        return self.app_configs[app_id]
+            raise ValueError(f"Invalid app_id: {app_id}. Available apps: {list(self.app_configs.keys())}")
+        
+        config = self.app_configs[app_id]
+        
+        # Validate that the config has the required fields
+        if "client_id" not in config or "client_secret" not in config:
+            raise ValueError(f"App {app_id} configuration missing required fields. Available fields: {list(config.keys())}")
+        
+        return config
     
     def get_app_id_for_tenant(self, tenant_id: str, existing_connections: Optional[List] = None) -> int:
         """Determine which app to use for a tenant"""

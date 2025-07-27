@@ -173,7 +173,7 @@ class XeroAuthRepository:
             refresh_token: Refresh token
             expires_at: Token expiration time
             scope: Granted scopes
-            app_id: Xero app ID (1-4)
+            app_id: Xero app ID (1-2)
             
         Returns:
             XeroConnection: The upserted connection
@@ -273,7 +273,7 @@ class XeroAuthRepository:
     def get_app_stats(self) -> Dict[int, int]:
         """Get connection count per app"""
         stats = {}
-        for app_id in range(1, 5):  # Apps 1-4
+        for app_id in range(1, 3):  # Apps 1-2
             count = self.db.query(XeroConnection).filter(
                 and_(
                     XeroConnection.app_id == app_id,

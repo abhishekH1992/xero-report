@@ -25,13 +25,7 @@ XERO_APP1_CLIENT_SECRET=your_app1_client_secret
 XERO_APP2_CLIENT_ID=your_app2_client_id
 XERO_APP2_CLIENT_SECRET=your_app2_client_secret
 
-# Xero App 3 Configuration
-XERO_APP3_CLIENT_ID=your_app3_client_id
-XERO_APP3_CLIENT_SECRET=your_app3_client_secret
 
-# Xero App 4 Configuration
-XERO_APP4_CLIENT_ID=your_app4_client_id
-XERO_APP4_CLIENT_SECRET=your_app4_client_secret
 
 # App Distribution Strategy (optional)
 # Format: tenant_id:app_id,tenant_id:app_id
@@ -81,7 +75,7 @@ Create `app/services/xero_app_manager.py`:
 
 #### 4.1 Automatic Distribution
 Implement automatic tenant distribution:
-- Round-robin distribution across 4 apps
+- Round-robin distribution across 2 apps
 - Load balancing based on current app usage
 - Fallback mechanisms for app failures
 

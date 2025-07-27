@@ -11,10 +11,6 @@ class Settings(BaseSettings):
     xero_app1_client_secret: str
     xero_app2_client_id: str
     xero_app2_client_secret: str
-    xero_app3_client_id: str
-    xero_app3_client_secret: str
-    xero_app4_client_id: str
-    xero_app4_client_secret: str
     
     # App Distribution Settings
     xero_tenant_app_mapping: str = ""
@@ -119,8 +115,6 @@ class Settings(BaseSettings):
         app_configs = {
             1: {"client_id": self.xero_app1_client_id, "client_secret": self.xero_app1_client_secret},
             2: {"client_id": self.xero_app2_client_id, "client_secret": self.xero_app2_client_secret},
-            3: {"client_id": self.xero_app3_client_id, "client_secret": self.xero_app3_client_secret},
-            4: {"client_id": self.xero_app4_client_id, "client_secret": self.xero_app4_client_secret},
         }
         return app_configs.get(app_id, app_configs[1])  # Default to app 1
     
