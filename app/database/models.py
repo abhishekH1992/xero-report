@@ -35,7 +35,7 @@ class XeroConnection(Base):
     refresh_token = Column(Text, nullable=False)  # Encrypted in production
     expires_at = Column(DateTime, nullable=False)
     scope = Column(String(500), nullable=False)
-    business_type = Column(String(255), default="Commercial Properties", nullable=False)
+    business_type = Column(String(255), default="Commercial Property", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)

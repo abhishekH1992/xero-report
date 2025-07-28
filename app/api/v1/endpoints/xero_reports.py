@@ -151,7 +151,7 @@ async def get_aged_receivables(
                             date_field="due_date",
                             is_negative=is_negative,
                             connection_name=connection.tenant_name,
-                            business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                            business_type=getattr(connection, 'business_type', 'Commercial Property'),
                             item_type="invoice"
                         )
             
@@ -188,7 +188,7 @@ async def get_aged_receivables(
                             date_field="due_date",
                             is_negative=True,  # Mark as negative to show as credit
                             connection_name=connection.tenant_name,
-                            business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                            business_type=getattr(connection, 'business_type', 'Commercial Property'),
                             item_type="invoice"
                         )
                 else:
@@ -214,7 +214,7 @@ async def get_aged_receivables(
                         date_field="due_date",
                         is_negative=invoice_data['is_negative'],
                         connection_name=connection.tenant_name,
-                        business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                        business_type=getattr(connection, 'business_type', 'Commercial Property'),
                         item_type="invoice"
                     )
 
@@ -233,7 +233,7 @@ async def get_aged_receivables(
                     is_negative=True,
                     date_fallback=report_date_obj,
                     connection_name=connection.tenant_name,
-                    business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                    business_type=getattr(connection, 'business_type', 'Commercial Property'),
                     item_type="credit_note"
                 )
 
@@ -252,7 +252,7 @@ async def get_aged_receivables(
                     is_negative=True,
                     date_fallback=report_date_obj,
                     connection_name=connection.tenant_name,
-                    business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                    business_type=getattr(connection, 'business_type', 'Commercial Property'),
                     item_type="overpayment"
                 )
                 

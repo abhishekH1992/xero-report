@@ -42,7 +42,7 @@ def get_business_unit_for_company(company_name: str) -> str:
         company_name: Name of the company
         
     Returns:
-        str: Business unit for the company, or "Commercial Properties" as default
+        str: Business unit for the company, or "Commercial Property" as default
     """
     company_data = load_company_business_units()
     
@@ -53,7 +53,7 @@ def get_business_unit_for_company(company_name: str) -> str:
         return company_data[trimmed_company_name]
     
     # Default business unit if company not found
-    return "Commercial Properties"
+    return "Commercial Property"
 
 
 def get_business_unit_for_tenant(tenant_name: str) -> str:
@@ -65,6 +65,6 @@ def get_business_unit_for_tenant(tenant_name: str) -> str:
         tenant_name: Name of the Xero tenant/company
         
     Returns:
-        str: Business unit for the tenant, or "Commercial Properties" as default
+        str: Business unit for the tenant, or "Commercial Property" as default
     """
     return get_business_unit_for_company(tenant_name) 

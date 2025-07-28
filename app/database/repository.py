@@ -72,7 +72,7 @@ class XeroAuthRepository:
     def create_connection(self, tenant_id: str, tenant_name: str, 
                          access_token: str, refresh_token: str,
                          expires_at: datetime, scope: str, 
-                         business_type: str = "Commercial Properties", app_id: int = 1) -> XeroConnection:
+                         business_type: str = "Commercial Property", app_id: int = 1) -> XeroConnection:
         """Create a new Xero connection with app_id"""
         connection = XeroConnection(
             tenant_id=tenant_id,
@@ -162,7 +162,7 @@ class XeroAuthRepository:
     def upsert_connection(self, tenant_id: str, tenant_name: str, 
                          access_token: str, refresh_token: str,
                          expires_at: datetime, scope: str,
-                         business_type: str = "Commercial Properties", app_id: int = 1) -> XeroConnection:
+                         business_type: str = "Commercial Property", app_id: int = 1) -> XeroConnection:
         """
         Upsert connection - update if exists, create if not
         

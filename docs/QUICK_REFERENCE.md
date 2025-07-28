@@ -159,7 +159,7 @@ CREATE TABLE xero_connections (
     refresh_token TEXT NOT NULL,
     expires_at DATETIME NOT NULL,
     scope VARCHAR(500) NOT NULL,
-    business_type VARCHAR(255) DEFAULT 'Commercial Properties',
+    business_type VARCHAR(255) DEFAULT 'Commercial Property',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE,
