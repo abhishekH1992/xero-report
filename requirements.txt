@@ -12,3 +12,4 @@ sqlalchemy==2.0.23
 alembic==1.13.1
 openpyxl==3.1.2
 xero-python==9.0.0
+pandas==2.1.4
