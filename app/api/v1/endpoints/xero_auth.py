@@ -324,3 +324,32 @@ async def cleanup_expired_states(
     """Clean up expired auth states from database"""
     deleted_count = xero_service.cleanup_expired_states()
     return {"message": f"Cleaned up {deleted_count} expired states"} 
+
+
+@router.get("/auth/scope/{tenant_id}")
+async def get_connection_scope(
+    tenant_id: str,
+    app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
+    xero_service: XeroAuthService = Depends(get_xero_auth_service)
+):
+    """
+    Get the current scope for a connection.
+    """
+    try:
+        # Get the existing connection
+        connection = xero_service.get_connection(tenant_id, app_id)
+        if not connection:
+            raise HTTPException(status_code=404, detail="Connection not found")
+        
+        return {
+            "tenant": {
+                "id": connection.tenant_id,
+                "name": connection.tenant_name,
+                "app_id": connection.app_id,
+                "scope": connection.scope,
+                "expires_at": connection.expires_at.isoformat() if connection.expires_at else None
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get scope: {str(e)}") 

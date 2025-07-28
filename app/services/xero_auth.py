@@ -378,6 +378,12 @@ class XeroAuthService:
         """
         if not token_response.expires_at:
             raise ValueError("Token response must have expires_at set")
+        
+        # Get business unit for the tenant
+        from app.util.business_unit_helper import get_business_unit_for_tenant
+        business_type = get_business_unit_for_tenant(tenant_name)
+        
+        print(f"🏢 Setting business unit for {tenant_name}: {business_type}")
             
         return self.db_repo.upsert_connection(
             tenant_id=tenant_id,
@@ -386,6 +392,7 @@ class XeroAuthService:
             refresh_token=token_response.refresh_token,
             expires_at=token_response.expires_at,
             scope=token_response.scope,
+            business_type=business_type,
             app_id=app_id
         )
     

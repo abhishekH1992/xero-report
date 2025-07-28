@@ -24,7 +24,9 @@ class Settings(BaseSettings):
     xero_redirect_uri: str = "http://localhost:8000/api/v1/auth/callback"
     xero_auth_url: str = "https://login.xero.com/identity/connect/authorize"
     xero_token_url: str = "https://identity.xero.com/connect/token"
-    xero_scope: str = "offline_access accounting.transactions accounting.contacts"
+
+    # finance.accountingactivity.read finance.bankstatementsplus.read finance.cashvalidation.read finance.statements.read scopes are valid. As xero doesn't exposed finance
+    xero_scope: str = "offline_access accounting.settings accounting.settings.read accounting.transactions accounting.transactions.read accounting.budgets.read accounting.contacts accounting.contacts.read accounting.journals.read accounting.reports.read assets assets.read"
     
     # Application settings
     app_name: str = "Finance Assistant"
