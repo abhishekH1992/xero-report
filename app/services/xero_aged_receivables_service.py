@@ -9,7 +9,7 @@ from app.util.xero_connection import create_xero_api_client
 
 
 class XeroAgedReceivablesService:
-    """Service for handling Xero aged receivables report data fetching"""
+    """Service for handling Xero aged receivables report data fetching with multi-app support"""
     
     def __init__(self, xero_auth_service: XeroAuthService):
         self.xero_auth_service = xero_auth_service
@@ -20,7 +20,8 @@ class XeroAgedReceivablesService:
         report_date,
         periods: int = 4,
         period_of: int = 1,
-        period_type: str = "Month"
+        period_type: str = "Month",
+        app_id: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Fetch all data needed for aged receivables report
@@ -31,12 +32,13 @@ class XeroAgedReceivablesService:
             periods: Number of aging periods
             period_of: Duration of each period
             period_type: Type of period (Day, Week, Month)
+            app_id: Optional Xero app ID (1-2) for multi-app support
             
         Returns:
             Dict containing invoices, credit_notes, and overpayments
         """
-        # Get connection from DB
-        connection = self.xero_auth_service.get_connection(tenant_id)
+        # Get connection from DB with app_id support
+        connection = self.xero_auth_service.get_connection(tenant_id, app_id)
         if not connection:
             raise HTTPException(status_code=404, detail="Connection not found")
 
@@ -66,7 +68,8 @@ class XeroAgedReceivablesService:
                 "report_date": report_date,
                 "periods": periods,
                 "period_of": period_of,
-                "period_type": period_type
+                "period_type": period_type,
+                "app_id": connection.app_id
             }
             
         except Exception as e:

@@ -11,30 +11,53 @@ from app.config import settings
 from app.models.xero_auth import XeroTokenResponse, XeroAuthState
 from app.database.repository import XeroAuthRepository
 from app.database.models import XeroConnection as DBXeroConnection
+from app.services.xero_app_manager import XeroAppManager
 
 
 class XeroAuthService:
-    """Service for handling Xero OAuth2 authentication with database persistence"""
+    """Service for handling Xero OAuth2 authentication with multi-app support"""
     
     def __init__(self, db_repository: XeroAuthRepository):
-        self.client_id = settings.xero_client_id
-        self.client_secret = settings.xero_client_secret
+        self.db_repo = db_repository
+        self.app_manager = XeroAppManager()
+        # Legacy support
+        self.client_id = settings.xero_client_id or settings.xero_app1_client_id
+        self.client_secret = settings.xero_client_secret or settings.xero_app1_client_secret
         self.redirect_uri = settings.xero_redirect_uri
         self.auth_url = settings.xero_auth_url
         self.token_url = settings.xero_token_url
         self.scope = settings.xero_scope
-        self.db_repo = db_repository
     
-    def generate_auth_url(self, use_pkce: bool = True) -> tuple[str, XeroAuthState]:
+    def get_app_credentials(self, app_id: int) -> tuple[str, str]:
+        """Get client credentials for specific app"""
+        try:
+            app_config = self.app_manager.get_app_config(app_id)
+            client_id = app_config["client_id"]
+            client_secret = app_config["client_secret"]
+            
+            # Validate that credentials are not empty
+            if not client_id or not client_secret:
+                raise ValueError(f"App {app_id} credentials are empty or not configured")
+                
+            return client_id, client_secret
+        except KeyError as e:
+            raise ValueError(f"App {app_id} configuration missing required field: {e}")
+        except Exception as e:
+            raise ValueError(f"Failed to get app {app_id} credentials: {e}")
+    
+    def generate_auth_url(self, app_id: int = 1, use_pkce: bool = True) -> tuple[str, XeroAuthState]:
         """
-        Generate authorization URL for Xero OAuth2 flow
+        Generate authorization URL for specific Xero app
         
         Args:
+            app_id: Xero app ID (1-2)
             use_pkce: Whether to use PKCE (Proof Key for Code Exchange) for enhanced security
             
         Returns:
             tuple: (authorization_url, auth_state)
         """
+        client_id, _ = self.get_app_credentials(app_id)
+        
         # Generate state parameter for security
         state = secrets.token_urlsafe(32)
         
@@ -46,13 +69,13 @@ class XeroAuthService:
             code_verifier = secrets.token_urlsafe(64)
             code_challenge = self._generate_code_challenge(code_verifier)
         
-        # Create and store auth state in database
-        auth_state = self.db_repo.create_auth_state(state, code_verifier)
+        # Create and store auth state in database with app_id
+        auth_state = self.db_repo.create_auth_state(state, code_verifier, app_id=app_id)
         
         # Build authorization URL
         params = {
             'response_type': 'code',
-            'client_id': self.client_id,
+            'client_id': client_id,
             'redirect_uri': self.redirect_uri,
             'scope': self.scope,
             'state': state
@@ -66,13 +89,14 @@ class XeroAuthService:
         
         return auth_url, auth_state
     
-    async def exchange_code_for_tokens(self, code: str, state: str) -> XeroTokenResponse:
+    async def exchange_code_for_tokens(self, code: str, state: str, app_id: int = 1) -> XeroTokenResponse:
         """
-        Exchange authorization code for access and refresh tokens
+        Exchange authorization code for access and refresh tokens using specific app
         
         Args:
             code: Authorization code from Xero
             state: State parameter for verification
+            app_id: Xero app ID (1-2)
             
         Returns:
             XeroTokenResponse: Token response with access and refresh tokens
@@ -95,11 +119,14 @@ class XeroAuthService:
             # Mark state as used
             self.db_repo.mark_auth_state_used(state)
             
+            # Get app credentials
+            client_id, client_secret = self.get_app_credentials(app_id)
+            
             # Prepare token request
             data = {
                 'grant_type': 'authorization_code',
-                'client_id': self.client_id,
-                'client_secret': self.client_secret,
+                'client_id': client_id,
+                'client_secret': client_secret,
                 'code': code,
                 'redirect_uri': self.redirect_uri
             }
@@ -164,12 +191,13 @@ class XeroAuthService:
             
             raise Exception(f"Token exchange failed: {error_message}")
     
-    async def refresh_access_token(self, refresh_token: str, tenant_id: Optional[str] = None) -> XeroTokenResponse:
+    async def refresh_access_token(self, refresh_token: str, app_id: int, tenant_id: Optional[str] = None) -> XeroTokenResponse:
         """
-        Refresh access token using refresh token
+        Refresh access token using specific app
         
         Args:
             refresh_token: The refresh token to use
+            app_id: Xero app ID (1-2)
             tenant_id: Optional tenant ID for logging purposes
             
         Returns:
@@ -180,10 +208,13 @@ class XeroAuthService:
         """
         start_time = time.time()
         
+        # Get app credentials
+        client_id, client_secret = self.get_app_credentials(app_id)
+        
         data = {
             'grant_type': 'refresh_token',
-            'client_id': self.client_id,
-            'client_secret': self.client_secret,
+            'client_id': client_id,
+            'client_secret': client_secret,
             'refresh_token': refresh_token
         }
         
@@ -200,7 +231,7 @@ class XeroAuthService:
                 # Get connection ID for logging
                 connection_id = None
                 if tenant_id:
-                    connection = self.db_repo.get_connection(tenant_id)
+                    connection = self.db_repo.get_connection_by_tenant_and_app(tenant_id, app_id)
                     if connection:
                         connection_id = connection.id
                 
@@ -241,7 +272,7 @@ class XeroAuthService:
             # Get connection ID for logging
             connection_id = None
             if tenant_id:
-                connection = self.db_repo.get_connection(tenant_id)
+                connection = self.db_repo.get_connection_by_tenant_and_app(tenant_id, app_id)
                 if connection:
                     connection_id = connection.id
             
@@ -257,13 +288,14 @@ class XeroAuthService:
             
             raise Exception(f"Token refresh failed: {error_message}")
     
-    async def get_tenant_info(self, access_token: str, tenant_id: Optional[str] = None) -> Dict[str, Any]:
+    async def get_tenant_info(self, access_token: str, tenant_id: Optional[str] = None, app_id: Optional[int] = None) -> Dict[str, Any]:
         """
         Get Xero tenant information using access token
         
         Args:
             access_token: Valid access token
             tenant_id: Optional tenant ID for logging purposes
+            app_id: Optional app ID for logging purposes
             
         Returns:
             Dict: Tenant information
@@ -286,8 +318,8 @@ class XeroAuthService:
                 
                 # Get connection ID for logging
                 connection_id = None
-                if tenant_id:
-                    connection = self.db_repo.get_connection(tenant_id)
+                if tenant_id and app_id:
+                    connection = self.db_repo.get_connection_by_tenant_and_app(tenant_id, app_id)
                     if connection:
                         connection_id = connection.id
                 
@@ -310,8 +342,8 @@ class XeroAuthService:
             
             # Get connection ID for logging
             connection_id = None
-            if tenant_id:
-                connection = self.db_repo.get_connection(tenant_id)
+            if tenant_id and app_id:
+                connection = self.db_repo.get_connection_by_tenant_and_app(tenant_id, app_id)
                 if connection:
                     connection_id = connection.id
             
@@ -327,11 +359,11 @@ class XeroAuthService:
             
             raise Exception(f"Failed to get tenant info: {str(e)}")
     
-    def save_connection(self, tenant_id: str, tenant_name: str, token_response: XeroTokenResponse) -> DBXeroConnection:
+    def save_connection(self, tenant_id: str, tenant_name: str, token_response: XeroTokenResponse, app_id: int = 1) -> DBXeroConnection:
         """
-        Save Xero connection data to database
+        Save Xero connection data to database with app_id
         
-        This method checks if a connection with the given tenant_id already exists.
+        This method checks if a connection with the given tenant_id and app_id already exists.
         If it exists, it updates the connection with new tokens and information.
         If it doesn't exist, it creates a new connection.
         
@@ -339,12 +371,19 @@ class XeroAuthService:
             tenant_id: Xero tenant ID
             tenant_name: Xero tenant name
             token_response: Token response from OAuth2 flow
+            app_id: Xero app ID (1-2)
             
         Returns:
             DBXeroConnection: Saved connection data
         """
         if not token_response.expires_at:
             raise ValueError("Token response must have expires_at set")
+        
+        # Get business unit for the tenant
+        from app.util.business_unit_helper import get_business_unit_for_tenant
+        business_type = get_business_unit_for_tenant(tenant_name)
+        
+        print(f"🏢 Setting business unit for {tenant_name}: {business_type}")
             
         return self.db_repo.upsert_connection(
             tenant_id=tenant_id,
@@ -352,18 +391,26 @@ class XeroAuthService:
             access_token=token_response.access_token,
             refresh_token=token_response.refresh_token,
             expires_at=token_response.expires_at,
-            scope=token_response.scope
+            scope=token_response.scope,
+            business_type=business_type,
+            app_id=app_id
         )
     
-    def get_connection(self, tenant_id: str) -> Optional[DBXeroConnection]:
-        """Get saved connection by tenant ID from database"""
+    def get_connection(self, tenant_id: str, app_id: Optional[int] = None) -> Optional[DBXeroConnection]:
+        """Get saved connection by tenant ID and optionally app_id"""
+        if app_id:
+            return self.db_repo.get_connection_by_tenant_and_app(tenant_id, app_id)
         return self.db_repo.get_connection(tenant_id)
     
     def get_all_connections(self) -> list[DBXeroConnection]:
         """Get all saved connections from database"""
         return self.db_repo.get_all_connections()
     
-    def update_connection_tokens(self, tenant_id: str, token_response: XeroTokenResponse) -> Optional[DBXeroConnection]:
+    def get_connections_by_app(self, app_id: int) -> list[DBXeroConnection]:
+        """Get all connections for a specific app"""
+        return self.db_repo.get_connections_by_app(app_id)
+    
+    def update_connection_tokens(self, tenant_id: str, token_response: XeroTokenResponse, app_id: int) -> Optional[DBXeroConnection]:
         """Update connection with new tokens in database"""
         if not token_response.expires_at:
             raise ValueError("Token response must have expires_at set")
@@ -373,16 +420,17 @@ class XeroAuthService:
             access_token=token_response.access_token,
             refresh_token=token_response.refresh_token,
             expires_at=token_response.expires_at,
-            scope=token_response.scope
+            scope=token_response.scope,
+            app_id=app_id
         )
     
-    def delete_connection(self, tenant_id: str) -> bool:
+    def delete_connection(self, tenant_id: str, app_id: Optional[int] = None) -> bool:
         """Delete connection from database"""
-        return self.db_repo.delete_connection(tenant_id)
+        return self.db_repo.delete_connection(tenant_id, app_id)
     
-    def deactivate_connection(self, tenant_id: str) -> bool:
+    def deactivate_connection(self, tenant_id: str, app_id: Optional[int] = None) -> bool:
         """Deactivate connection (soft delete)"""
-        return self.db_repo.deactivate_connection(tenant_id)
+        return self.db_repo.deactivate_connection(tenant_id, app_id)
     
     def get_expired_connections(self, buffer_minutes: int = 5) -> list[DBXeroConnection]:
         """Get connections that need token refresh"""
@@ -399,6 +447,10 @@ class XeroAuthService:
     def get_connection_stats(self) -> Dict[str, Any]:
         """Get connection statistics"""
         return self.db_repo.get_connection_stats()
+    
+    def get_app_stats(self) -> Dict[int, int]:
+        """Get connection count per app"""
+        return self.db_repo.get_app_stats()
     
     def cleanup_expired_states(self) -> int:
         """Clean up expired auth states from database"""

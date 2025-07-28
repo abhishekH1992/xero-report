@@ -166,8 +166,8 @@ curl -H "X-API-Key: your-api-key" \
 ```json
 {
   "aged_receivables": {
-    "Commercial Properties|Demo Company (NZ)|Bayside Club": {
-      "business_unit": "Commercial Properties",
+    "Commercial Property|Demo Company (NZ)|Bayside Club": {
+      "business_unit": "Commercial Property",
       "company": "Demo Company (NZ)",
       "contact": "Bayside Club",
       "Current": 0.0,
@@ -211,6 +211,6 @@ curl -H "X-API-Key: your-api-key" \
 ## Configuration & Customization
 
 - **Aging Buckets**: Change `periods`, `period_of`, and `period_type` query params to adjust bucket size and count.
-- **Business Unit**: Set per Xero connection in the database (default: "Commercial Properties").
+- **Business Unit**: Set per Xero connection in the database (default: "Commercial Property").
 - **Company**: Pulled from the Xero tenant name.
 - **API Key**: All requests require a valid API key in the `X-API-Key` header.

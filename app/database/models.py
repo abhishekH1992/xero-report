@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Float, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -14,12 +14,13 @@ class XeroAuthState(Base):
     id = Column(Integer, primary_key=True, index=True)
     state = Column(String(255), unique=True, index=True, nullable=False)
     code_verifier = Column(String(255), nullable=True)  # For PKCE
+    app_id = Column(Integer, nullable=False, default=1)  # Store which app was used
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     used = Column(Boolean, default=False, nullable=False)
     expires_at = Column(DateTime, nullable=False)  # State expiration
     
     def __repr__(self):
-        return f"<XeroAuthState(state={self.state}, used={self.used})>"
+        return f"<XeroAuthState(state={self.state}, used={self.used}, app_id={self.app_id})>"
 
 
 class XeroConnection(Base):
@@ -27,16 +28,22 @@ class XeroConnection(Base):
     __tablename__ = "xero_connections"
     
     id = Column(Integer, primary_key=True, index=True)
-    tenant_id = Column(String(255), unique=True, index=True, nullable=False)
+    tenant_id = Column(String(255), index=True, nullable=False)  # Remove unique constraint
+    app_id = Column(Integer, nullable=False, default=1, index=True)  # New field
     tenant_name = Column(String(255), nullable=False)
     access_token = Column(Text, nullable=False)  # Encrypted in production
     refresh_token = Column(Text, nullable=False)  # Encrypted in production
     expires_at = Column(DateTime, nullable=False)
     scope = Column(String(500), nullable=False)
-    business_type = Column(String(255), default="Commercial Properties", nullable=False)
+    business_type = Column(String(255), default="Commercial Property", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    
+    # Add unique constraint for tenant_id + app_id combination
+    __table_args__ = (
+        UniqueConstraint('tenant_id', 'app_id', name='uq_tenant_app'),
+    )
     
     # Relationship to token history
     token_history = relationship("XeroTokenHistory", back_populates="connection", cascade="all, delete-orphan")
@@ -45,7 +52,7 @@ class XeroConnection(Base):
     api_logs = relationship("XeroApiLog", back_populates="connection", cascade="all, delete-orphan")
     
     def __repr__(self):
-        return f"<XeroConnection(tenant_id={self.tenant_id}, tenant_name={self.tenant_name})>"
+        return f"<XeroConnection(tenant_id={self.tenant_id}, tenant_name={self.tenant_name}, app_id={self.app_id})>"
 
     @property
     def is_expired(self):

@@ -26,6 +26,7 @@ async def get_aged_receivables(
     periods: int = Query(4, description="Number of aging periods"),
     period_of: int = Query(1, description="Duration of each period"),
     period_type: str = Query("Month", description="Type of period (Day, Week, Month)"),
+    app_id: Optional[int] = Query(None, ge=1, le=2, description="Filter by Xero app ID (1-2)"),
     aged_receivables_service: XeroAgedReceivablesService = Depends(get_aged_receivables_service),
     xero_auth_service: XeroAuthService = Depends(get_xero_auth_service),
     connection_id: str = Query(None, description="Connection ID")
@@ -33,6 +34,7 @@ async def get_aged_receivables(
     """
     Custom Aged Receivables report: fetch all unpaid invoices from all connections, 
     group by contact and Xero-style aging bucket, with business unit and company columns.
+    Supports multi-app functionality with app_id filtering.
     """
     # Parse report_date or use today
     if report_date:
@@ -44,11 +46,14 @@ async def get_aged_receivables(
     else:
         report_date_obj = datetime.utcnow().date()
 
-    # Get all active connections
+    # Get all active connections with app_id filtering
     if connection_id:
         connections = [xero_auth_service.get_connection(connection_id)]
+    elif app_id:
+        connections = xero_auth_service.get_connections_by_app(app_id)
     else:
         connections = xero_auth_service.get_all_connections()
+    
     if not connections:
         raise HTTPException(status_code=404, detail="No active Xero connections found")
 
@@ -61,13 +66,14 @@ async def get_aged_receivables(
     # Process each connection
     for connection in connections:
         try:
-            # Fetch data for this connection
+            # Fetch data for this connection with app_id support
             data = aged_receivables_service.get_aged_receivables_data(
                 tenant_id=str(connection.tenant_id),
                 report_date=report_date_obj,
                 periods=periods,
                 period_of=period_of,
-                period_type=period_type
+                period_type=period_type,
+                app_id=connection.app_id
             )
             
             invoices = data["invoices"]
@@ -145,7 +151,7 @@ async def get_aged_receivables(
                             date_field="due_date",
                             is_negative=is_negative,
                             connection_name=connection.tenant_name,
-                            business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                            business_type=getattr(connection, 'business_type', 'Commercial Property'),
                             item_type="invoice"
                         )
             
@@ -182,7 +188,7 @@ async def get_aged_receivables(
                             date_field="due_date",
                             is_negative=True,  # Mark as negative to show as credit
                             connection_name=connection.tenant_name,
-                            business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                            business_type=getattr(connection, 'business_type', 'Commercial Property'),
                             item_type="invoice"
                         )
                 else:
@@ -208,7 +214,7 @@ async def get_aged_receivables(
                         date_field="due_date",
                         is_negative=invoice_data['is_negative'],
                         connection_name=connection.tenant_name,
-                        business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                        business_type=getattr(connection, 'business_type', 'Commercial Property'),
                         item_type="invoice"
                     )
 
@@ -227,7 +233,7 @@ async def get_aged_receivables(
                     is_negative=True,
                     date_fallback=report_date_obj,
                     connection_name=connection.tenant_name,
-                    business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                    business_type=getattr(connection, 'business_type', 'Commercial Property'),
                     item_type="credit_note"
                 )
 
@@ -246,12 +252,15 @@ async def get_aged_receivables(
                     is_negative=True,
                     date_fallback=report_date_obj,
                     connection_name=connection.tenant_name,
-                    business_type=getattr(connection, 'business_type', 'Commercial Properties'),
+                    business_type=getattr(connection, 'business_type', 'Commercial Property'),
                     item_type="overpayment"
                 )
                 
         except Exception as e:
-            print(f"[XERO REPORT] Error processing connection {connection.tenant_name}: {str(e)}")
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"[XERO REPORT] Error processing connection {connection.tenant_name} (App {connection.app_id}): {str(e)}")
+            print(f"[XERO REPORT] Full error details: {error_details}")
             # Continue with other connections even if one fails
             continue
 
@@ -316,5 +325,6 @@ async def get_aged_receivables(
             "period_type": period_type,
             "bucket_names": bucket_names
         },
-        "excel_file": excel_file_path
+        "excel_file": excel_file_path,
+        "app_filter": app_id
     }

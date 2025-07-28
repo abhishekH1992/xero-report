@@ -6,15 +6,27 @@ from pathlib import Path
 
 
 class Settings(BaseSettings):
-    # Xero OAuth2 Configuration
-    xero_client_id: str
-    xero_client_secret: str
-    xero_redirect_uri: str = "http://localhost:8000/api/v1/auth/callback"
+    # Xero Multi-App OAuth2 Configuration
+    xero_app1_client_id: str
+    xero_app1_client_secret: str
+    xero_app2_client_id: str
+    xero_app2_client_secret: str
     
-    # Xero API URLs
+    # App Distribution Settings
+    xero_tenant_app_mapping: str = ""
+    xero_app_distribution_mode: str = "round_robin"
+    
+    # Legacy support (for backward compatibility)
+    xero_client_id: Optional[str] = None
+    xero_client_secret: Optional[str] = None
+    
+    # Common Xero settings
+    xero_redirect_uri: str = "http://localhost:8000/api/v1/auth/callback"
     xero_auth_url: str = "https://login.xero.com/identity/connect/authorize"
     xero_token_url: str = "https://identity.xero.com/connect/token"
-    xero_scope: str = "offline_access accounting.transactions accounting.contacts"
+
+    # finance.accountingactivity.read finance.bankstatementsplus.read finance.cashvalidation.read finance.statements.read scopes are valid. As xero doesn't exposed finance
+    xero_scope: str = "offline_access accounting.settings accounting.settings.read accounting.transactions accounting.transactions.read accounting.budgets.read accounting.contacts accounting.contacts.read accounting.journals.read accounting.reports.read assets assets.read"
     
     # Application settings
     app_name: str = "Finance Assistant"
@@ -99,6 +111,24 @@ class Settings(BaseSettings):
         if not self.allowed_origins or self.allowed_origins == ["*"]:
             if not self.debug:
                 print("⚠️ Using wildcard CORS. Set ALLOWED_ORIGINS in .env for production use.")
+
+    def get_xero_app_config(self, app_id: int) -> dict:
+        """Get Xero app configuration by app ID"""
+        app_configs = {
+            1: {"client_id": self.xero_app1_client_id, "client_secret": self.xero_app1_client_secret},
+            2: {"client_id": self.xero_app2_client_id, "client_secret": self.xero_app2_client_secret},
+        }
+        return app_configs.get(app_id, app_configs[1])  # Default to app 1
+    
+    def get_tenant_app_mapping(self) -> dict:
+        """Parse tenant to app mapping from environment"""
+        mapping = {}
+        if self.xero_tenant_app_mapping:
+            for item in self.xero_tenant_app_mapping.split(','):
+                if ':' in item:
+                    tenant_id, app_id = item.strip().split(':', 1)
+                    mapping[tenant_id.strip()] = int(app_id.strip())
+        return mapping
 
 
 settings = Settings() 

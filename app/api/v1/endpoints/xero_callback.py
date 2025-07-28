@@ -23,8 +23,16 @@ async def auth_callback(
             error_msg += f" - {error_description}"
         raise HTTPException(status_code=400, detail=error_msg)
     try:
-        token_response = await xero_service.exchange_code_for_tokens(code, state)
-        tenant_info = await xero_service.get_tenant_info(token_response.access_token)
+        # Get auth state to retrieve app_id
+        auth_state = xero_service.db_repo.get_auth_state(state)
+        if not auth_state:
+            raise HTTPException(status_code=400, detail="Invalid or expired state parameter")
+        
+        app_id = auth_state.app_id
+        
+        # Exchange code for tokens using the correct app
+        token_response = await xero_service.exchange_code_for_tokens(code, state, app_id)
+        tenant_info = await xero_service.get_tenant_info(token_response.access_token, app_id=app_id)
         if tenant_info:
             print(f"Available tenants: {[t.get('tenantName', 'Unknown') for t in tenant_info]}")
             tenant = tenant_info[0]
@@ -43,14 +51,16 @@ async def auth_callback(
             connection = xero_service.save_connection(
                 tenant_id=tenant['tenantId'],
                 tenant_name=tenant['tenantName'],
-                token_response=token_response
+                token_response=token_response,
+                app_id=app_id
             )
             return {
                 "success": True,
                 "message": "Successfully authenticated with Xero",
                 "tenant": {
                     "id": connection.tenant_id,
-                    "name": connection.tenant_name
+                    "name": connection.tenant_name,
+                    "app_id": connection.app_id
                 },
                 "token_info": {
                     "expires_at": token_response.expires_at.isoformat(),
@@ -95,8 +105,16 @@ async def auth_callback_html(
         """
         return HTMLResponse(content=html_content, status_code=400)
     try:
-        token_response = await xero_service.exchange_code_for_tokens(code, state)
-        tenant_info = await xero_service.get_tenant_info(token_response.access_token)
+        # Get auth state to retrieve app_id
+        auth_state = xero_service.db_repo.get_auth_state(state)
+        if not auth_state:
+            raise HTTPException(status_code=400, detail="Invalid or expired state parameter")
+        
+        app_id = auth_state.app_id
+        
+        # Exchange code for tokens using the correct app
+        token_response = await xero_service.exchange_code_for_tokens(code, state, app_id)
+        tenant_info = await xero_service.get_tenant_info(token_response.access_token, app_id=app_id)
         if tenant_info:
             print(f"Available tenants: {[t.get('tenantName', 'Unknown') for t in tenant_info]}")
             tenant = tenant_info[0]
@@ -113,7 +131,8 @@ async def auth_callback_html(
             connection = xero_service.save_connection(
                 tenant_id=tenant['tenantId'],
                 tenant_name=tenant['tenantName'],
-                token_response=token_response
+                token_response=token_response,
+                app_id=app_id
             )
             html_content = f"""
             <!DOCTYPE html>
@@ -132,6 +151,7 @@ async def auth_callback_html(
                     <h2>Connected to Xero</h2>
                     <p><strong>Organization:</strong> {connection.tenant_name}</p>
                     <p><strong>Tenant ID:</strong> {connection.tenant_id}</p>
+                    <p><strong>App ID:</strong> {connection.app_id}</p>
                     <p><strong>Token Expires:</strong> {token_response.expires_at.strftime('%Y-%m-%d %H:%M:%S UTC')}</p>
                     <p><strong>Scopes:</strong> {token_response.scope}</p>
                 </div>
