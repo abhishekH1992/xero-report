@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 from app.config import settings
-from app.util.report_helper import process_financial_item, generate_bucket_names
+from app.util.report_helper import process_financial_item, generate_bucket_names, calculate_aging_bucket
 
 client = TestClient(app)
 
@@ -43,6 +43,31 @@ def test_aged_receivables_unit():
     assert report[key]["business_unit"] == "Test Unit"
     assert report[key]["company"] == "Test Company"
     assert report[key]["contact"] == "Test Customer"
+
+def test_calculate_aging_bucket_periods():
+    """Test that calculate_aging_bucket works correctly with different periods values"""
+    report_date = datetime.date(2024, 6, 30)
+    
+    # Test with periods=4 (should have 4 buckets: < 1 Month, 1 Month, 2 Months, 3 Months)
+    due_date_1_month = datetime.date(2024, 5, 30)  # 1 month ago
+    due_date_2_months = datetime.date(2024, 4, 30)  # 2 months ago
+    due_date_3_months = datetime.date(2024, 3, 30)  # 3 months ago
+    due_date_4_months = datetime.date(2024, 2, 29)  # 4 months ago
+    due_date_5_months = datetime.date(2024, 1, 30)  # 5 months ago
+    
+    # Test periods=4
+    assert calculate_aging_bucket(report_date, due_date_1_month, 4, 1, "Month") == "1 Month"
+    assert calculate_aging_bucket(report_date, due_date_2_months, 4, 1, "Month") == "2 Months"
+    assert calculate_aging_bucket(report_date, due_date_3_months, 4, 1, "Month") == "3 Months"
+    assert calculate_aging_bucket(report_date, due_date_4_months, 4, 1, "Month") == "Older"
+    assert calculate_aging_bucket(report_date, due_date_5_months, 4, 1, "Month") == "Older"
+    
+    # Test periods=3 (should have 3 buckets: < 1 Month, 1 Month, 2 Months)
+    assert calculate_aging_bucket(report_date, due_date_1_month, 3, 1, "Month") == "1 Month"
+    assert calculate_aging_bucket(report_date, due_date_2_months, 3, 1, "Month") == "2 Months"
+    assert calculate_aging_bucket(report_date, due_date_3_months, 3, 1, "Month") == "Older"
+    assert calculate_aging_bucket(report_date, due_date_4_months, 3, 1, "Month") == "Older"
+    assert calculate_aging_bucket(report_date, due_date_5_months, 3, 1, "Month") == "Older"
 
 # --- INTEGRATION TEST ---
 @pytest.fixture

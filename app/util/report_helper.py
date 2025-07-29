@@ -21,16 +21,21 @@ def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, 
         if report_date.day < due_date.day:
             months_diff -= 1
         
-        # Calculate which period this falls into
+        # Calculate which period this falls into using the periods parameter
         if months_diff <= 0:
             return f"< 1 {period_type}"  # Current invoices go to < 1 Month
-        elif months_diff <= 1:
+        elif months_diff == 1:
             return f"1 {period_type}"
-        elif months_diff <= 2:
-            return f"2 {period_type}s"
-        elif months_diff <= 3:
-            return f"3 {period_type}s"
         else:
+            # For periods > 1, check each period dynamically
+            # The bucket names are: < 1 Month, 1 Month, 2 Months, 3 Months, etc.
+            # But the generate_bucket_names function creates buckets up to periods-1
+            # So for periods=4, we have: Current, < 1 Month, 1 Month, 2 Months, 3 Months, Older
+            # For periods=3, we have: Current, < 1 Month, 1 Month, 2 Months, Older
+            for i in range(2, periods):  # Changed from periods+1 to periods
+                if months_diff == i:
+                    return f"{i} {period_type}{'s' if i > 1 else ''}"
+            
             return "Older"
     else:
         # Calculate days per period based on type
