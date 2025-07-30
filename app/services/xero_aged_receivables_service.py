@@ -286,11 +286,22 @@ class XeroAgedReceivablesService:
                 is_negative = False
                 report_amount = 0
                 
+                # Debug: Show scenario matching
+                if len(all_invoices) < 5:
+                    with open("debug.log", "a") as debug_file:
+                        debug_file.write(f"[DEBUG] Scenario Check for {invoice.invoice_number}:\n")
+                        debug_file.write(f"[DEBUG] Issue Date: {issue_date} (<= {report_date}): {issue_date <= report_date if issue_date else 'N/A'}\n")
+                        debug_file.write(f"[DEBUG] Payment Date: {payment_date} (<= {report_date}): {payment_date <= report_date if payment_date else 'N/A'}\n")
+                        debug_file.write(f"[DEBUG] Due Date: {due_date} (> {report_date}): {due_date > report_date if due_date else 'N/A'}\n")
+                
                 # Scenario 1: Issue date in June, Payment in June, Due date in July - SHOULD NOT SHOW IN AR
                 if (issue_date and issue_date <= report_date and 
                     payment_date and payment_date <= report_date and 
                     due_date and due_date > report_date):
                     should_include = False
+                    if len(all_invoices) < 5:
+                        with open("debug.log", "a") as debug_file:
+                            debug_file.write(f"[DEBUG] Matched Scenario 1: Excluded\n")
                 
                 # Scenario 2: Issue date in June, Not Paid in June, Due date in July - SHOULD SHOW IN CURRENT
                 elif (issue_date and issue_date <= report_date and 
@@ -299,19 +310,28 @@ class XeroAgedReceivablesService:
                     should_include = True
                     is_negative = False
                     report_amount = amount_due if amount_due > 0 else total_amount
+                    if len(all_invoices) < 5:
+                        with open("debug.log", "a") as debug_file:
+                            debug_file.write(f"[DEBUG] Matched Scenario 2: Show in Current\n")
                 
                 # Scenario 3: Issue date in July, Paid in June, Due date in July - SHOULD SHOW IN CURRENT AS NEGATIVE
                 elif (issue_date and issue_date > report_date and 
                       payment_date and payment_date <= report_date and 
-                      due_date and due_date > report_date):
+                      due_date and due_date >= report_date):
                     should_include = True
                     is_negative = True
                     report_amount = total_amount
+                    if len(all_invoices) < 5:
+                        with open("debug.log", "a") as debug_file:
+                            debug_file.write(f"[DEBUG] Matched Scenario 3: Show in Current as Negative\n")
                 
                 # Scenario 4: Issue date before report date, paid before report date - SHOULD NOT SHOW IN AR
                 elif (issue_date and issue_date <= report_date and 
                       payment_date and payment_date <= report_date):
                     should_include = False
+                    if len(all_invoices) < 5:
+                        with open("debug.log", "a") as debug_file:
+                            debug_file.write(f"[DEBUG] Matched Scenario 4: Excluded\n")
                 
                 # Scenario 5: Issue date before report date, paid after report date - SHOULD SHOW IN CURRENT AS NEGATIVE
                 elif (issue_date and issue_date <= report_date and 
@@ -319,6 +339,9 @@ class XeroAgedReceivablesService:
                     should_include = True
                     is_negative = True
                     report_amount = total_amount
+                    if len(all_invoices) < 5:
+                        with open("debug.log", "a") as debug_file:
+                            debug_file.write(f"[DEBUG] Matched Scenario 5: Show in Current as Negative\n")
                 
                 # Default: Include if it was outstanding as of report date (unpaid invoices)
                 elif (issue_date and issue_date <= report_date and 
@@ -326,6 +349,25 @@ class XeroAgedReceivablesService:
                     should_include = True
                     is_negative = False
                     report_amount = amount_due if amount_due > 0 else total_amount
+                    if len(all_invoices) < 5:
+                        with open("debug.log", "a") as debug_file:
+                            debug_file.write(f"[DEBUG] Matched Default: Show as Outstanding\n")
+                
+                # Scenario 6: Issue date before report date, paid on report date - SHOULD NOT SHOW IN AR
+                elif (issue_date and issue_date <= report_date and 
+                      payment_date and payment_date == report_date):
+                    should_include = False
+                    if len(all_invoices) < 5:
+                        with open("debug.log", "a") as debug_file:
+                            debug_file.write(f"[DEBUG] Matched Scenario 6: Excluded (Paid on Report Date)\n")
+                
+                # Scenario 7: Issue date before report date, paid on or before report date - SHOULD NOT SHOW IN AR
+                elif (issue_date and issue_date <= report_date and 
+                      payment_date and payment_date <= report_date):
+                    should_include = False
+                    if len(all_invoices) < 5:
+                        with open("debug.log", "a") as debug_file:
+                            debug_file.write(f"[DEBUG] Matched Scenario 7: Excluded (Paid on or before Report Date)\n")
                 
                 if should_include:
                     # Create a modified invoice object with the correct amount
