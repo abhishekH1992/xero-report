@@ -1,10 +1,15 @@
 from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, ForeignKey, Float, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 Base = declarative_base()
+
+
+def utc_now():
+    """Return timezone-aware UTC datetime"""
+    return datetime.now(timezone.utc)
 
 
 class XeroAuthState(Base):
@@ -15,7 +20,7 @@ class XeroAuthState(Base):
     state = Column(String(255), unique=True, index=True, nullable=False)
     code_verifier = Column(String(255), nullable=True)  # For PKCE
     app_id = Column(Integer, nullable=False, default=1)  # Store which app was used
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
     used = Column(Boolean, default=False, nullable=False)
     expires_at = Column(DateTime, nullable=False)  # State expiration
     
@@ -36,8 +41,8 @@ class XeroConnection(Base):
     expires_at = Column(DateTime, nullable=False)
     scope = Column(String(500), nullable=False)
     business_type = Column(String(255), default="Commercial Property", nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     
     # Add unique constraint for tenant_id + app_id combination
@@ -70,7 +75,7 @@ class XeroTokenHistory(Base):
     refresh_token_hash = Column(String(255), nullable=False)  # Hash of refresh token
     expires_at = Column(DateTime, nullable=False)
     scope = Column(String(500), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
     refresh_type = Column(String(50), nullable=False)  # 'initial', 'refresh', 'renewal'
     old_token_hash = Column(String(255), nullable=True)
     new_token_hash = Column(String(255), nullable=False)
@@ -93,7 +98,7 @@ class XeroApiLog(Base):
     status_code = Column(Integer, nullable=True)
     response_time_ms = Column(Integer, nullable=True)
     error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
     
     # Relationship to connection (optional since connection_id can be null)
     connection = relationship("XeroConnection", back_populates="api_logs")

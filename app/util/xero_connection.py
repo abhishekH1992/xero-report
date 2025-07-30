@@ -2,7 +2,7 @@ from xero_python.accounting import AccountingApi
 from xero_python.api_client import ApiClient
 from xero_python.api_client.configuration import Configuration
 from xero_python.api_client.oauth2 import OAuth2Token
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.util.xero_token import register_xero_token_handlers
 from app.services.xero_auth import XeroAuthService
@@ -45,7 +45,7 @@ def create_xero_api_client(connection: XeroConnection, tenant_id: str, xero_serv
         "refresh_token": connection.refresh_token,
         "scope": connection.scope.split(),
         "expires_at": connection.expires_at.timestamp(),
-        "expires_in": int((connection.expires_at - datetime.utcnow()).total_seconds()),
+        "expires_in": int((connection.expires_at - datetime.now(timezone.utc)).total_seconds()),
         "token_type": "Bearer"
     }
 

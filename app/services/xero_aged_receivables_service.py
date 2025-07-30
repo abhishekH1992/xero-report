@@ -134,7 +134,7 @@ class XeroAgedReceivablesService:
                     break
                     
                 page += 1
-                
+                    
             except Exception as e:
                 break
         
@@ -181,10 +181,122 @@ class XeroAgedReceivablesService:
                     print(f"[DEBUG] Exception in paid invoices API call: {str(e)}")
                     break
         
+        # Call 3: Get invoices issued after report date but paid before report date (for past reports)
+        # This handles the case where an invoice was issued in July but paid in June
+        early_paid_invoices = []
+        page = 1
+        
+        if not is_future_date:
+            while True:
+                try:
+                    where_clause_early_paid = f'Type == "ACCREC" && Date > DateTime({date_for_xero})'
+                    print(f"[DEBUG] Early paid invoices query: {where_clause_early_paid}")
+                    invoices_response = accounting_api.get_invoices(
+                        tenant_id,  # xero_tenant_id
+                        empty,      # if_modified_since
+                        where_clause_early_paid,  # where
+                        empty,      # order
+                        empty,      # ids
+                        empty,      # invoice_numbers
+                        empty,      # contact_ids
+                        ["PAID", "AUTHORISED"],   # statuses - include both to catch all cases
+                        page,       # page
+                        empty,      # include_archived
+                        empty,      # created_by_my_app
+                        empty,      # unitdp
+                        "False",    # summary_only - Changed from "True" to "False" to get full details
+                        page_size,  # page_size
+                        empty       # search_term
+                    )
+                    
+                    if not invoices_response.invoices:
+                        break
+                    
+                    print(f"[DEBUG] Found {len(invoices_response.invoices)} early paid invoices on page {page}")
+                    for inv in invoices_response.invoices:
+                        inv_number = getattr(inv, 'invoice_number', 'Unknown')
+                        inv_date = getattr(inv, 'date', 'Unknown')
+                        inv_status = getattr(inv, 'status', 'Unknown')
+                        print(f"[DEBUG] Early paid invoice: {inv_number} - Date: {inv_date} - Status: {inv_status}")
+                        
+                        # Special check for INV-0799
+                        if inv_number == "INV-0799":
+                            print(f"[DEBUG] FOUND INV-0799! Date: {inv_date}, Status: {inv_status}")
+                    
+                    early_paid_invoices.extend(invoices_response.invoices)
+                    
+                    if len(invoices_response.invoices) < page_size:
+                        break
+                    
+                    if page >= 100:  # Safety limit
+                        break
+                        
+                    page += 1
+                    
+                except Exception as e:
+                    print(f"[DEBUG] Exception in early paid invoices API call: {str(e)}")
+                    break
+            
+            # Additional search specifically for INV-0799 to debug the issue
+            try:
+                print(f"[DEBUG] Searching specifically for INV-0799...")
+                specific_query = f'Type == "ACCREC" && InvoiceNumber == "INV-0799"'
+                specific_response = accounting_api.get_invoices(
+                    tenant_id,
+                    empty,
+                    specific_query,
+                    empty,
+                    empty,
+                    empty,
+                    empty,
+                    ["PAID", "AUTHORISED"],
+                    1,
+                    empty,
+                    empty,
+                    empty,
+                    "False",
+                    page_size,
+                    empty
+                )
+                
+                if specific_response.invoices:
+                    for inv in specific_response.invoices:
+                        print(f"[DEBUG] INV-0799 found in specific search: Date: {getattr(inv, 'date', 'Unknown')}, Status: {getattr(inv, 'status', 'Unknown')}, DueDate: {getattr(inv, 'due_date', 'Unknown')}")
+                        # Add to early_paid_invoices if it matches our criteria
+                        issue_date = getattr(inv, 'date', None)
+                        payment_date = getattr(inv, 'fully_paid_on_date', None)
+                        due_date = getattr(inv, 'due_date', None)
+                        
+                        if issue_date and hasattr(issue_date, 'date'):
+                            issue_date = issue_date.date()
+                        if payment_date and hasattr(payment_date, 'date'):
+                            payment_date = payment_date.date()
+                        if due_date and hasattr(due_date, 'date'):
+                            due_date = due_date.date()
+                        
+                        print(f"[DEBUG] INV-0799 dates - Issue: {issue_date}, Payment: {payment_date}, Due: {due_date}")
+                        print(f"[DEBUG] INV-0799 comparison - Issue > Report: {issue_date > report_date if issue_date else 'N/A'}, Payment <= Report: {payment_date <= report_date if payment_date else 'N/A'}")
+                        
+                        if (issue_date and issue_date > report_date and 
+                            payment_date and payment_date <= report_date and 
+                            due_date and due_date >= report_date):
+                            print(f"[DEBUG] INV-0799 matches our criteria! Adding to early_paid_invoices")
+                            early_paid_invoices.append(inv)
+                        else:
+                            print(f"[DEBUG] INV-0799 does not match our criteria")
+                else:
+                    print(f"[DEBUG] INV-0799 not found in specific search")
+                    
+            except Exception as e:
+                print(f"[DEBUG] Exception in specific INV-0799 search: {str(e)}")
+        
         # Filter AUTHORISED invoices (AmountDue > 0 and Date <= report_date)
         for invoice in unpaid_invoices:
             contact_name = getattr(invoice.contact, 'name', 'Unknown') if hasattr(invoice, 'contact') and invoice.contact else 'Unknown'
             
+            # Special check for INV-0799 in unpaid invoices
+            if getattr(invoice, 'invoice_number', '') == "INV-0799":
+                print(f"[DEBUG] FOUND INV-0799 in unpaid_invoices! Date: {getattr(invoice, 'date', 'Unknown')}, Status: {getattr(invoice, 'status', 'Unknown')}, AmountDue: {getattr(invoice, 'amount_due', 'Unknown')}")
             
             if (is_future_date and invoice.type == "ACCREC" and 
                 invoice.amount_due > 0 and 
@@ -400,6 +512,10 @@ class XeroAgedReceivablesService:
         # - DueDate > report_date
         # - Issue date and Due date must be in the same month (to avoid showing invoices issued in one month but due in another)
         for invoice in paid_invoices:
+            # Special check for INV-0799 in paid invoices
+            if getattr(invoice, 'invoice_number', '') == "INV-0799":
+                print(f"[DEBUG] FOUND INV-0799 in paid_invoices! Date: {getattr(invoice, 'date', 'Unknown')}, Status: {getattr(invoice, 'status', 'Unknown')}, DueDate: {getattr(invoice, 'due_date', 'Unknown')}")
+            
             if (invoice.type == "ACCREC" and
                 invoice.status == "PAID" and
                 invoice.due_date and invoice.due_date > report_date and
@@ -419,6 +535,117 @@ class XeroAgedReceivablesService:
                 if (issue_date.year == due_date.year and 
                     issue_date.month == due_date.month):
                     all_invoices.append(invoice)
+
+        # Filter EARLY PAID invoices (issued after report date but paid before report date)
+        # This handles the specific case where an invoice was issued in July but paid in June
+        for invoice in early_paid_invoices:
+            if invoice.type == "ACCREC":
+                # Get payment date from the invoice
+                payment_date = getattr(invoice, 'fully_paid_on_date', None)
+                payments = getattr(invoice, 'payments', [])
+                amount_paid = getattr(invoice, 'amount_paid', 0)
+                
+                # Parse FullyPaidOnDate if it's in Xero date format
+                if payment_date and isinstance(payment_date, str) and payment_date.startswith('/Date('):
+                    try:
+                        timestamp_str = payment_date.split('(')[1].split('+')[0]
+                        timestamp = int(timestamp_str) / 1000
+                        payment_date = datetime.fromtimestamp(timestamp).date()
+                    except (ValueError, IndexError):
+                        payment_date = None
+                elif payment_date and isinstance(payment_date, str) and payment_date.startswith('\\/Date('):
+                    try:
+                        timestamp_str = payment_date.split('(')[1].split('+')[0]
+                        timestamp = int(timestamp_str) / 1000
+                        payment_date = datetime.fromtimestamp(timestamp).date()
+                    except (ValueError, IndexError):
+                        payment_date = None
+                
+                # Get payment date from Payments array if FullyPaidOnDate not available
+                if not payment_date and payments:
+                    latest_payment_date = None
+                    for payment in payments:
+                        if hasattr(payment, 'date'):
+                            payment_dt = payment.date
+                            if isinstance(payment_dt, str) and payment_dt.startswith('/Date('):
+                                try:
+                                    timestamp_str = payment_dt.split('(')[1].split('+')[0]
+                                    timestamp = int(timestamp_str) / 1000
+                                    payment_dt = datetime.fromtimestamp(timestamp).date()
+                                except (ValueError, IndexError):
+                                    continue
+                            elif isinstance(payment_dt, str) and payment_dt.startswith('\\/Date('):
+                                try:
+                                    timestamp_str = payment_dt.split('(')[1].split('+')[0]
+                                    timestamp = int(timestamp_str) / 1000
+                                    payment_dt = datetime.fromtimestamp(timestamp).date()
+                                except (ValueError, IndexError):
+                                    continue
+                            elif hasattr(payment_dt, 'date'):
+                                payment_dt = payment_dt.date()
+                            else:
+                                continue
+                            
+                            if latest_payment_date is None or payment_dt > latest_payment_date:
+                                latest_payment_date = payment_dt
+                    
+                    if latest_payment_date:
+                        payment_date = latest_payment_date
+                
+                # Convert dates to date objects if needed
+                issue_date = getattr(invoice, 'date', None)
+                due_date = getattr(invoice, 'due_date', None)
+                total_amount = getattr(invoice, 'total', 0)
+                
+                if issue_date and hasattr(issue_date, 'date'):
+                    issue_date = issue_date.date()
+                if due_date and hasattr(due_date, 'date'):
+                    due_date = due_date.date()
+                if payment_date and hasattr(payment_date, 'date'):
+                    payment_date = payment_date.date()
+                
+                # Special debug for INV-0799
+                if getattr(invoice, 'invoice_number', '') == "INV-0799":
+                    print(f"[DEBUG] INV-0799 processing - Issue: {issue_date}, Payment: {payment_date}, Due: {due_date}")
+                    print(f"[DEBUG] INV-0799 payments array: {payments}")
+                    print(f"[DEBUG] INV-0799 amount_paid: {amount_paid}")
+                    print(f"[DEBUG] INV-0799 status: {getattr(invoice, 'status', 'Unknown')}")
+                
+                # Check if this invoice matches the scenario: issued after report date, paid before report date
+                # OR if it's an AUTHORISED invoice with amount_paid > 0 (indicating it was paid)
+                if ((issue_date and issue_date > report_date and 
+                     payment_date and payment_date <= report_date and 
+                     due_date and due_date >= report_date) or
+                    (getattr(invoice, 'status', '') == "AUTHORISED" and 
+                     amount_paid > 0 and 
+                     issue_date and issue_date > report_date and
+                     due_date and due_date >= report_date)):
+                    
+                    # Create a modified invoice object for this scenario
+                    modified_invoice = type("Item", (), {})()
+                    for attr in dir(invoice):
+                        if not attr.startswith('_'):
+                            setattr(modified_invoice, attr, getattr(invoice, attr))
+                    
+                    # Set as negative amount (credit) in Current bucket
+                    setattr(modified_invoice, 'amount_due', total_amount)
+                    setattr(modified_invoice, 'is_negative', True)
+                    
+                    with open("debug.log", "a") as debug_file:
+                        debug_file.write(f"[DEBUG] EARLY PAID Invoice: {invoice.invoice_number}\n")
+                        debug_file.write(f"[DEBUG] EARLY PAID Invoice ID: {invoice.invoice_id}\n")
+                        debug_file.write(f"[DEBUG] EARLY PAID Payment Date: {payment_date}\n")
+                        debug_file.write(f"[DEBUG] EARLY PAID Issue Date: {issue_date}\n")
+                        debug_file.write(f"[DEBUG] EARLY PAID Due Date: {due_date}\n")
+                        debug_file.write(f"[DEBUG] EARLY PAID Total Amount: {total_amount}\n")
+                        debug_file.write(f"[DEBUG] EARLY PAID Status: {getattr(invoice, 'status', None)}\n")
+                        debug_file.write(f"[DEBUG] EARLY PAID Amount Paid: {amount_paid}\n")
+                        debug_file.write(f"[DEBUG] EARLY PAID Should Include: True\n")
+                        debug_file.write(f"[DEBUG] EARLY PAID Is Negative: True\n")
+                        debug_file.write(f"[DEBUG] EARLY PAID Report Amount: {total_amount}\n")
+                        debug_file.write(f"[DEBUG] EARLY PAID --------------------------------\n")
+                    
+                    all_invoices.append(modified_invoice)
 
         return all_invoices
     
