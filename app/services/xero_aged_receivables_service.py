@@ -406,6 +406,16 @@ class XeroAgedReceivablesService:
                         debug_file.write(f"[DEBUG] Payment Date: {payment_date} (<= {report_date}): {payment_date <= report_date if payment_date else 'N/A'}\n")
                         debug_file.write(f"[DEBUG] Due Date: {due_date} (> {report_date}): {due_date > report_date if due_date else 'N/A'}\n")
                 
+                # Special debug for INV-0801 and INV-0800
+                if getattr(invoice, 'invoice_number', '') in ["INV-0801", "INV-0800"]:
+                    print(f"[DEBUG] {invoice.invoice_number} - Issue: {issue_date}, Payment: {payment_date}, Due: {due_date}")
+                    print(f"[DEBUG] {invoice.invoice_number} - Report Date: {report_date}")
+                    print(f"[DEBUG] {invoice.invoice_number} - Issue <= Report: {issue_date <= report_date if issue_date else 'N/A'}")
+                    print(f"[DEBUG] {invoice.invoice_number} - Payment <= Report: {payment_date <= report_date if payment_date else 'N/A'}")
+                    print(f"[DEBUG] {invoice.invoice_number} - Due > Report: {due_date > report_date if due_date else 'N/A'}")
+                    print(f"[DEBUG] {invoice.invoice_number} - Amount Due: {amount_due}, Total: {total_amount}")
+                    print(f"[DEBUG] {invoice.invoice_number} - Status: {getattr(invoice, 'status', 'Unknown')}")
+                
                 # Scenario 1: Issue date in June, Payment in June, Due date in July - SHOULD NOT SHOW IN AR
                 if (issue_date and issue_date <= report_date and 
                     payment_date and payment_date <= report_date and 
@@ -445,15 +455,15 @@ class XeroAgedReceivablesService:
                         with open("debug.log", "a") as debug_file:
                             debug_file.write(f"[DEBUG] Matched Scenario 4: Excluded\n")
                 
-                # Scenario 5: Issue date before report date, paid after report date - SHOULD SHOW IN CURRENT AS NEGATIVE
+                # Scenario 5: Issue date before report date, paid after report date - SHOULD SHOW IN CURRENT AS POSITIVE
                 elif (issue_date and issue_date <= report_date and 
                       payment_date and payment_date > report_date):
                     should_include = True
-                    is_negative = True
+                    is_negative = False  # Changed to False - normal payment should be positive
                     report_amount = total_amount
                     if len(all_invoices) < 5:
                         with open("debug.log", "a") as debug_file:
-                            debug_file.write(f"[DEBUG] Matched Scenario 5: Show in Current as Negative\n")
+                            debug_file.write(f"[DEBUG] Matched Scenario 5: Show in Current as Positive\n")
                 
                 # Default: Include if it was outstanding as of report date (unpaid invoices)
                 elif (issue_date and issue_date <= report_date and 
