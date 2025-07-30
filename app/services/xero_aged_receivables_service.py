@@ -92,10 +92,22 @@ class XeroAgedReceivablesService:
         unpaid_invoices = []
         page = 1
         page_size = 100
-        
+
+        is_future_date = report_date > datetime.now().date()
+
+        # Write a logic to check if report date is future date or past date (today's date considered as past date)
+        if is_future_date:
+            # Future report date logic: Only include currently unpaid invoices
+            where_clause_unpaid = f'Type == "ACCREC" && Status == "AUTHORISED" && AmountDue > 0 && Date <= DateTime({date_for_xero})'
+            where_clause_paid = f'Type == "ACCREC" && Status == "PAID" && DueDate > DateTime({date_for_xero})'
+        else:
+            # Past report date logic: Include invoices that were outstanding as of the report date
+            where_clause_unpaid = f'Type == "ACCREC" && Date <= DateTime({date_for_xero})'
+            where_clause_paid = f'Type == "ACCREC" && Status == "PAID" && DueDate > DateTime({date_for_xero}) && Date <= DateTime({date_for_xero})'
+
         while True:
             try:
-                where_clause_unpaid = f'Type == "ACCREC" && Status == "AUTHORISED" && AmountDue > 0 && Date <= DateTime({date_for_xero})'
+                # where_clause_unpaid = f'Type == "ACCREC" && Status == "AUTHORISED" && AmountDue > 0 && Date <= DateTime({date_for_xero})'
                 
                 invoices_response = accounting_api.get_invoices(
                     tenant_id,  # xero_tenant_id
@@ -137,7 +149,7 @@ class XeroAgedReceivablesService:
         
         while True:
             try:
-                where_clause_paid = f'Type == "ACCREC" && Status == "PAID" && DueDate > DateTime({date_for_xero})'
+                # where_clause_paid = f'Type == "ACCREC" && Status == "PAID" && DueDate > DateTime({date_for_xero})'
                 
                 invoices_response = accounting_api.get_invoices(
                     tenant_id,  # xero_tenant_id
@@ -177,9 +189,13 @@ class XeroAgedReceivablesService:
         
         # Filter AUTHORISED invoices (AmountDue > 0 and Date <= report_date)
         for invoice in unpaid_invoices:
-            if (invoice.type == "ACCREC" and 
+            if (is_future_date and invoice.type == "ACCREC" and 
                 invoice.amount_due > 0 and 
                 invoice.status == "AUTHORISED" and
+                invoice.date and invoice.date <= report_date):
+                all_invoices.append(invoice)
+
+            elif (not is_future_date and invoice.type == "ACCREC" and 
                 invoice.date and invoice.date <= report_date):
                 all_invoices.append(invoice)
         
