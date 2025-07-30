@@ -46,6 +46,8 @@ async def get_aged_receivables(
     else:
         report_date_obj = datetime.utcnow().date()
 
+    is_future_date = report_date_obj > datetime.now().date()
+
     # Get all active connections with app_id filtering
     if connection_id:
         connections = [xero_auth_service.get_connection(connection_id)]
@@ -73,15 +75,16 @@ async def get_aged_receivables(
                 periods=periods,
                 period_of=period_of,
                 period_type=period_type,
-                app_id=connection.app_id
+                app_id=connection.app_id,
+                is_future_date=is_future_date
             )
             
             invoices = data["invoices"]
             credit_notes = data["credit_notes"]
-            overpayments = data["overpayments"]  # Now properly contains overpayments from the service
+            overpayments = data["overpayments"] 
             
             total_invoices += len(invoices)
-            
+
             # Process invoices
             # First, group invoices by contact to handle multiple paid invoices per contact
             contact_invoices = {}
@@ -109,12 +112,27 @@ async def get_aged_receivables(
                     report_amount = amount_due
                     report_date_field = due_date
                     is_negative = amount_due < 0
+                    
                 elif status == "PAID" and due_date and due_date > report_date_obj and amount_due == 0.0:
-                    # Paid invoice with future due date and zero amount due = credit
-                    include_in_report = True
-                    report_amount = total_amount  # Use total amount (will be made negative)
-                    report_date_field = due_date  # Use actual due date for proper aging
-                    is_negative = True  # Mark as negative to show as credit
+                    # For past reports, only include paid invoices that were issued before the report date
+                    # For future reports, include all paid invoices with future due dates
+                    invoice_date = getattr(invoice, 'date', None)
+                    if invoice_date and hasattr(invoice_date, 'date'):
+                        invoice_date = invoice_date.date()
+                    
+                    if report_date_obj <= datetime.now().date():
+                        # Past report logic: Only include if invoice was issued before report date
+                        if invoice_date and invoice_date <= report_date_obj:
+                            include_in_report = True
+                            report_amount = total_amount  # Use total amount (will be made negative)
+                            report_date_field = due_date  # Use actual due date for proper aging
+                            is_negative = True  # Mark as negative to show as credit
+                    else:
+                        # Future report logic: Include all paid invoices with future due dates
+                        include_in_report = True
+                        report_amount = total_amount  # Use total amount (will be made negative)
+                        report_date_field = due_date  # Use actual due date for proper aging
+                        is_negative = True  # Mark as negative to show as credit
                 
                 if include_in_report and report_date_field:
                     # Group by contact for paid invoices with future due dates
