@@ -56,8 +56,8 @@ class XeroConnection(Base):
 
     @property
     def is_expired(self):
-        from datetime import datetime
-        return datetime.utcnow() >= self.expires_at
+        from datetime import datetime, timezone
+        return datetime.now(timezone.utc) >= self.expires_at
 
 
 class XeroTokenHistory(Base):

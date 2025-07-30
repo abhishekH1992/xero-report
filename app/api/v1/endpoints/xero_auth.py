@@ -3,7 +3,7 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.services.xero_auth import XeroAuthService
 from app.services.xero_app_manager import XeroAppManager
@@ -125,7 +125,7 @@ async def refresh_token(
         print(f"Current time: {datetime.utcnow()}")
         
         # Check if token needs refresh
-        buffer_time = datetime.utcnow().replace(second=0, microsecond=0)
+        buffer_time = datetime.now(timezone.utc).replace(second=0, microsecond=0)
         buffer_time = buffer_time.replace(minute=buffer_time.minute + 5)
         
         if buffer_time < connection.expires_at:
@@ -190,7 +190,7 @@ async def list_connections(
             "tenant_name": connection.tenant_name,
             "app_id": connection.app_id,
             "expires_at": connection.expires_at.isoformat(),
-            "needs_refresh": connection.expires_at <= datetime.utcnow(),
+            "needs_refresh": connection.expires_at <= datetime.now(timezone.utc),
             "created_at": connection.created_at.isoformat(),
             "updated_at": connection.updated_at.isoformat(),
             "is_active": connection.is_active
@@ -219,7 +219,7 @@ async def get_connection(
         "tenant_name": connection.tenant_name,
         "app_id": connection.app_id,
         "expires_at": connection.expires_at.isoformat(),
-        "needs_refresh": connection.expires_at <= datetime.utcnow(),
+        "needs_refresh": connection.expires_at <= datetime.now(timezone.utc),
         "scope": connection.scope,
         "created_at": connection.created_at.isoformat(),
         "updated_at": connection.updated_at.isoformat(),

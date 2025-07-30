@@ -2,7 +2,7 @@ import secrets
 import hashlib
 import base64
 import urllib.parse
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 import httpx
 import time
@@ -159,7 +159,7 @@ class XeroAuthService:
                 token_data = response.json()
                 
                 # Calculate expiration time
-                expires_at = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
+                expires_at = datetime.now(timezone.utc) + timedelta(seconds=token_data['expires_in'])
                 
                 # Create token response
                 token_response = XeroTokenResponse(
@@ -249,7 +249,7 @@ class XeroAuthService:
                 token_data = response.json()
                 
                 # Calculate expiration time
-                expires_at = datetime.utcnow() + timedelta(seconds=token_data['expires_in'])
+                expires_at = datetime.now(timezone.utc) + timedelta(seconds=token_data['expires_in'])
                 
                 # Create token response
                 token_response = XeroTokenResponse(
