@@ -220,6 +220,15 @@ async def get_aged_receivables(
 
             # Process credit notes (apply as negative values)
             for cn in credit_notes:
+                # For credit notes that were processed after the report date, use total amount
+                # For credit notes with remaining credit, use remaining_credit
+                if getattr(cn, 'remaining_credit', 0) > 0:
+                    amount_field = "remaining_credit"
+                    print(f"[DEBUG] Using remaining_credit: {getattr(cn, 'remaining_credit', 0)}")
+                else:
+                    amount_field = "total"
+                    print(f"[DEBUG] Using total: {getattr(cn, 'total', 0)}")
+                
                 process_financial_item(
                     item=cn,
                     report_date=report_date_obj,
@@ -228,7 +237,7 @@ async def get_aged_receivables(
                     period_type=period_type,
                     bucket_names=bucket_names,
                     report=all_report_data,
-                    amount_field="remaining_credit",
+                    amount_field=amount_field,
                     date_field="date",
                     is_negative=True,
                     date_fallback=report_date_obj,

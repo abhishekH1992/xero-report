@@ -107,7 +107,7 @@ class XeroAgedReceivablesService:
 
         while True:
             try:
-                # where_clause_unpaid = f'Type == "ACCREC" && Status == "AUTHORISED" && AmountDue > 0 && Date <= DateTime({date_for_xero})'
+                where_clause_unpaid = f'Type == "ACCREC" && Status == "AUTHORISED" && AmountDue > 0 && Date <= DateTime({date_for_xero})'
                 
                 invoices_response = accounting_api.get_invoices(
                     tenant_id,  # xero_tenant_id
@@ -149,7 +149,7 @@ class XeroAgedReceivablesService:
         
         while True:
             try:
-                # where_clause_paid = f'Type == "ACCREC" && Status == "PAID" && DueDate > DateTime({date_for_xero})'
+                where_clause_paid = f'Type == "ACCREC" && Status == "PAID" && DueDate > DateTime({date_for_xero})'
                 
                 invoices_response = accounting_api.get_invoices(
                     tenant_id,  # xero_tenant_id
@@ -195,9 +195,9 @@ class XeroAgedReceivablesService:
                 invoice.date and invoice.date <= report_date):
                 all_invoices.append(invoice)
 
-            elif (not is_future_date and invoice.type == "ACCREC" and 
-                invoice.date and invoice.date <= report_date):
-                all_invoices.append(invoice)
+            # elif (not is_future_date and invoice.type == "ACCREC" and 
+            #     invoice.date and invoice.date <= report_date):
+            #     all_invoices.append(invoice)
         
         # Filter PAID invoices with business logic:
         # - DueDate > report_date
@@ -227,10 +227,17 @@ class XeroAgedReceivablesService:
     
     def _get_credit_notes(self, accounting_api, tenant_id: str, date_for_xero: str) -> List:
         """Fetch all credit notes for the period"""
+        # Convert date string to datetime for comparison
+        from datetime import datetime
+        try:
+            year, month, day = map(int, date_for_xero.split(','))
+            report_date = datetime(year, month, day).date()
+        except Exception as e:
+            report_date = datetime.now().date()
+        
         credit_where_clauses = []
         credit_where_clauses.append(f'Type == "ACCRECCREDIT"')
         credit_where_clauses.append(f"Date <= DateTime({date_for_xero})")
-        credit_where_clauses.append(f"RemainingCredit > 0")
         credit_where_clauses.append(f'(Status == "PAID" OR Status == "AUTHORISED")')
         credit_where_clause = " && ".join(credit_where_clauses)
         
@@ -244,7 +251,59 @@ class XeroAgedReceivablesService:
             empty,  # statuses
         )
         
-        return credit_notes_response.credit_notes or []
+        # Filter credit notes based on processing date logic
+        filtered_credit_notes = []
+        for credit_note in (credit_notes_response.credit_notes or []):
+            should_include = False
+            
+            # Check if credit note was processed after report date
+            if hasattr(credit_note, 'fully_paid_on_date') and credit_note.fully_paid_on_date:
+                # Convert to date if it's datetime
+                paid_date = credit_note.fully_paid_on_date
+                if hasattr(paid_date, 'date'):
+                    paid_date = paid_date.date()
+                
+                if paid_date > report_date:
+                    should_include = True
+            
+            # Check payments if no FullyPaidOnDate
+            elif hasattr(credit_note, 'payments') and credit_note.payments:
+                latest_payment_date = None
+                for payment in credit_note.payments:
+                    if hasattr(payment, 'date'):
+                        payment_date = payment.date
+                        if hasattr(payment_date, 'date'):
+                            payment_date = payment_date.date()
+                        
+                        if latest_payment_date is None or payment_date > latest_payment_date:
+                            latest_payment_date = payment_date
+                
+                if latest_payment_date and latest_payment_date > report_date:
+                    should_include = True
+            
+            # Check allocations if no payments
+            elif hasattr(credit_note, 'allocations') and credit_note.allocations:
+                latest_allocation_date = None
+                for allocation in credit_note.allocations:
+                    if hasattr(allocation, 'date'):
+                        allocation_date = allocation.date
+                        if hasattr(allocation_date, 'date'):
+                            allocation_date = allocation_date.date()
+                        
+                        if latest_allocation_date is None or allocation_date > latest_allocation_date:
+                            latest_allocation_date = allocation_date
+                
+                if latest_allocation_date and latest_allocation_date > report_date:
+                    should_include = True
+            
+            # If no processing date found, include it (for AUTHORISED credit notes)
+            else:
+                should_include = True
+            
+            if should_include:
+                filtered_credit_notes.append(credit_note)
+        
+        return filtered_credit_notes
     
     def _get_bank_transactions(self, accounting_api, tenant_id: str, date_for_xero: str) -> List:
         """Fetch bank transactions with type RECEIVE-OVERPAYMENT for the period"""
