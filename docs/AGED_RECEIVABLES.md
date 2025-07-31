@@ -22,8 +22,10 @@ An aged receivables report categorizes outstanding customer invoices into time-b
 - **Dynamic Buckets**: Buckets are configurable (number, size, and type: days/weeks/months).
 - **Contact Grouping**: Sums receivables by contact (customer) and bucket.
 - **Credit Notes & Overpayments**: Credits and overpayments are applied as negative values in the correct bucket.
+- **Early Payment Detection**: Handles invoices issued after report date but paid before report date.
 - **Business Unit & Company Columns**: Each row is tagged with the Xero connection's business type and company name.
 - **Excel Export**: Download a formatted Excel file for further analysis or sharing.
+- **Combined Buckets**: Optional parameter to combine "Current" and "< 1 Month" in Excel export.
 
 ---
 
@@ -59,6 +61,15 @@ Type == "ACCREC" && (
 - **Unpaid invoices**: `AmountDue > 0` and `Status == "AUTHORISED"` with issue date on or before report date
 - **Paid invoices with future due dates**: `Status == "PAID"` and `DueDate > report_date` (these represent credits/overpayments)
 
+#### Early Paid Invoices Query
+```sql
+Type == "ACCREC" && Date > DateTime(report_date)
+```
+
+**What this fetches:**
+- Invoices issued after the report date but potentially paid before the report date
+- These are processed separately to handle early payment scenarios
+
 #### Credit Notes Query
 ```sql
 Type == "ACCRECCREDIT" && 
@@ -83,6 +94,22 @@ Status == "AUTHORISED"
 - Overpayment transactions with remaining credit
 - Created on or before the report date
 - With AUTHORISED status
+
+### Payment Date Detection Logic
+
+The system uses a multi-priority approach to determine payment dates:
+
+1. **First Priority**: `fully_paid_on_date` field (if available)
+2. **Second Priority**: Calculate total paid up to report date from `payments` array
+3. **Third Priority**: `updated_date_utc` as proxy for payment date
+4. **Fourth Priority**: Use issue date for old invoices that are clearly paid
+
+#### Early Payment Calculation
+When `fully_paid_on_date` is not available, the system:
+- Loops through all payments in the `payments` array
+- Only includes payments where `payment_date <= report_date`
+- Calculates `total_paid_up_to_report_date` for the specific amount paid before report date
+- Uses this calculated amount instead of the full invoice amount
 
 ### Aging Calculation Logic
 
@@ -113,14 +140,48 @@ else:
 - **3 Months**: 4 months overdue
 - **Older**: More than 4 months overdue
 
+### Invoice Processing Scenarios
+
+The system handles various invoice scenarios based on issue date, payment date, and due date:
+
+#### Scenario 1: Issue date in June, Payment in June, Due date in July
+- **Should NOT SHOW IN AR**: Invoice was paid before it was due
+- **Condition**: `issue_date <= report_date && payment_date <= report_date && due_date > report_date`
+
+#### Scenario 2: Issue date in June, Not Paid in June, Due date in July
+- **Should SHOW IN CURRENT**: Normal unpaid invoice
+- **Condition**: `issue_date <= report_date && (not payment_date || payment_date > report_date) && due_date > report_date`
+
+#### Scenario 3: Issue date in July, Paid in June, Due date in July
+- **Should SHOW IN CURRENT AS NEGATIVE**: Early payment (credit)
+- **Condition**: `issue_date > report_date && payment_date <= report_date && due_date >= report_date`
+- **Amount**: Uses `total_paid_up_to_report_date` (only payments before report date)
+
+#### Scenario 4: Issue date before report date, paid before report date
+- **Should NOT SHOW IN AR**: Fully paid invoice
+- **Condition**: `issue_date <= report_date && payment_date <= report_date`
+
+#### Scenario 5: Issue date before report date, paid after report date
+- **Should SHOW IN CURRENT AS POSITIVE**: Normal payment
+- **Condition**: `issue_date <= report_date && payment_date > report_date`
+
+#### Scenario 6: Issue date before report date, paid on report date
+- **Should NOT SHOW IN AR**: Paid on report date
+- **Condition**: `issue_date <= report_date && payment_date == report_date`
+
+#### Scenario 7: Issue date before report date, paid on or before report date
+- **Should NOT SHOW IN AR**: Fully paid invoice
+- **Condition**: `issue_date <= report_date && payment_date <= report_date`
+
 ### Data Processing Flow
 
 1. **Fetch Data**: Retrieve invoices, credit notes, and overpayments from Xero
-2. **Deduplicate**: Remove duplicate invoices based on invoice_id
-3. **Categorize**: Assign each item to appropriate aging bucket
-4. **Group**: Aggregate amounts by contact and business unit
-5. **Calculate**: Sum totals for each bucket and overall
-6. **Export**: Generate Excel report with system comments
+2. **Process Early Payments**: Handle invoices issued after report date but paid before report date
+3. **Deduplicate**: Remove duplicate invoices based on invoice_id
+4. **Categorize**: Assign each item to appropriate aging bucket
+5. **Group**: Aggregate amounts by contact and business unit
+6. **Calculate**: Sum totals for each bucket and overall
+7. **Export**: Generate Excel report with system comments
 
 ### System Comments Generation
 
@@ -155,11 +216,12 @@ GET /api/v1/reports/aged-receivables
 | periods      | int    | 4       | Number of aging periods                      |
 | period_of    | int    | 1       | Duration of each period                      |
 | period_type  | str    | Month   | Type of period: Day, Week, or Month          |
+| show_current | bool   | true    | Show Current bucket separately (if false, combines Current and < 1 Month in Excel) |
 
 ### Example Request
 ```bash
 curl -H "X-API-Key: your-api-key" \
-  "http://localhost:8000/api/v1/reports/aged-receivables?report_date=2024-06-30&periods=4&period_of=1&period_type=Month"
+  "http://localhost:8000/api/v1/reports/aged-receivables?report_date=2024-06-30&periods=4&period_of=1&period_type=Month&show_current=false"
 ```
 
 ### Example Response (JSON)
@@ -206,6 +268,13 @@ curl -H "X-API-Key: your-api-key" \
   - **Summary Rows**: Total and Percentage rows at the bottom
 - The file is formatted for easy reading and sharing.
 
+### Excel Bucket Combination
+
+When `show_current=false`:
+- **JSON Response**: Still maintains separate "Current" and "< 1 Month" buckets
+- **Excel Export**: Combines "Current" and "< 1 Month" into a single column "Current & < 1 Month"
+- **Data Aggregation**: Sums the amounts from both buckets for the combined column
+
 ---
 
 ## Configuration & Customization
@@ -214,3 +283,29 @@ curl -H "X-API-Key: your-api-key" \
 - **Business Unit**: Set per Xero connection in the database (default: "Commercial Property").
 - **Company**: Pulled from the Xero tenant name.
 - **API Key**: All requests require a valid API key in the `X-API-Key` header.
+- **Early Payment Detection**: Automatically handles invoices with partial payments before report date.
+- **Excel Bucket Combination**: Use `show_current=false` to combine Current and < 1 Month in Excel export.
+
+---
+
+## Edge Cases Handled
+
+### Early Payment Scenarios
+- **INV-0799 Example**: Invoice issued July 1, due July 1, but payment of $8.14 made on June 30
+- **Result**: Shows as negative $8.14 in Current bucket (not full invoice amount)
+- **Logic**: Only payments made before report date are included
+
+### Payment Date Detection
+- **Missing fully_paid_on_date**: Uses payments array to calculate total paid up to report date
+- **Multiple Payments**: Sums only payments occurring on or before report date
+- **Date Format Handling**: Supports Xero's date format `/Date(timestamp)/`
+
+### Invoice Status Handling
+- **AUTHORISED with payments**: Invoices marked as AUTHORISED but with payment records
+- **PAID with future due dates**: Treated as credits/overpayments
+- **Mixed payment scenarios**: Handles invoices with multiple payments across different periods
+
+### Bucket Combination
+- **JSON vs Excel**: Maintains separate buckets in JSON but can combine in Excel
+- **Data Integrity**: Ensures totals remain accurate when combining buckets
+- **Backward Compatibility**: Default behavior maintains separate buckets
