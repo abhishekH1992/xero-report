@@ -178,7 +178,6 @@ class XeroAgedReceivablesService:
                     page += 1
                     
                 except Exception as e:
-                    print(f"[DEBUG] Exception in paid invoices API call: {str(e)}")
                     break
         
         # Call 3: Get invoices issued after report date but paid before report date (for past reports)
@@ -190,7 +189,6 @@ class XeroAgedReceivablesService:
             while True:
                 try:
                     where_clause_early_paid = f'Type == "ACCREC" && Date > DateTime({date_for_xero})'
-                    print(f"[DEBUG] Early paid invoices query: {where_clause_early_paid}")
                     invoices_response = accounting_api.get_invoices(
                         tenant_id,  # xero_tenant_id
                         empty,      # if_modified_since
@@ -212,17 +210,6 @@ class XeroAgedReceivablesService:
                     if not invoices_response.invoices:
                         break
                     
-                    print(f"[DEBUG] Found {len(invoices_response.invoices)} early paid invoices on page {page}")
-                    for inv in invoices_response.invoices:
-                        inv_number = getattr(inv, 'invoice_number', 'Unknown')
-                        inv_date = getattr(inv, 'date', 'Unknown')
-                        inv_status = getattr(inv, 'status', 'Unknown')
-                        print(f"[DEBUG] Early paid invoice: {inv_number} - Date: {inv_date} - Status: {inv_status}")
-                        
-                        # Special check for INV-0799
-                        if inv_number == "INV-0799":
-                            print(f"[DEBUG] FOUND INV-0799! Date: {inv_date}, Status: {inv_status}")
-                    
                     early_paid_invoices.extend(invoices_response.invoices)
                     
                     if len(invoices_response.invoices) < page_size:
@@ -234,70 +221,10 @@ class XeroAgedReceivablesService:
                     page += 1
                     
                 except Exception as e:
-                    print(f"[DEBUG] Exception in early paid invoices API call: {str(e)}")
                     break
-            
-            # Additional search specifically for INV-0799 to debug the issue
-            try:
-                print(f"[DEBUG] Searching specifically for INV-0799...")
-                specific_query = f'Type == "ACCREC" && InvoiceNumber == "INV-0799"'
-                specific_response = accounting_api.get_invoices(
-                    tenant_id,
-                    empty,
-                    specific_query,
-                    empty,
-                    empty,
-                    empty,
-                    empty,
-                    ["PAID", "AUTHORISED"],
-                    1,
-                    empty,
-                    empty,
-                    empty,
-                    "False",
-                    page_size,
-                    empty
-                )
-                
-                if specific_response.invoices:
-                    for inv in specific_response.invoices:
-                        print(f"[DEBUG] INV-0799 found in specific search: Date: {getattr(inv, 'date', 'Unknown')}, Status: {getattr(inv, 'status', 'Unknown')}, DueDate: {getattr(inv, 'due_date', 'Unknown')}")
-                        # Add to early_paid_invoices if it matches our criteria
-                        issue_date = getattr(inv, 'date', None)
-                        payment_date = getattr(inv, 'fully_paid_on_date', None)
-                        due_date = getattr(inv, 'due_date', None)
-                        
-                        if issue_date and hasattr(issue_date, 'date'):
-                            issue_date = issue_date.date()
-                        if payment_date and hasattr(payment_date, 'date'):
-                            payment_date = payment_date.date()
-                        if due_date and hasattr(due_date, 'date'):
-                            due_date = due_date.date()
-                        
-                        print(f"[DEBUG] INV-0799 dates - Issue: {issue_date}, Payment: {payment_date}, Due: {due_date}")
-                        print(f"[DEBUG] INV-0799 comparison - Issue > Report: {issue_date > report_date if issue_date else 'N/A'}, Payment <= Report: {payment_date <= report_date if payment_date else 'N/A'}")
-                        
-                        if (issue_date and issue_date > report_date and 
-                            payment_date and payment_date <= report_date and 
-                            due_date and due_date >= report_date):
-                            print(f"[DEBUG] INV-0799 matches our criteria! Adding to early_paid_invoices")
-                            early_paid_invoices.append(inv)
-                        else:
-                            print(f"[DEBUG] INV-0799 does not match our criteria")
-                else:
-                    print(f"[DEBUG] INV-0799 not found in specific search")
-                    
-            except Exception as e:
-                print(f"[DEBUG] Exception in specific INV-0799 search: {str(e)}")
         
         # Filter AUTHORISED invoices (AmountDue > 0 and Date <= report_date)
         for invoice in unpaid_invoices:
-            contact_name = getattr(invoice.contact, 'name', 'Unknown') if hasattr(invoice, 'contact') and invoice.contact else 'Unknown'
-            
-            # Special check for INV-0799 in unpaid invoices
-            if getattr(invoice, 'invoice_number', '') == "INV-0799":
-                print(f"[DEBUG] FOUND INV-0799 in unpaid_invoices! Date: {getattr(invoice, 'date', 'Unknown')}, Status: {getattr(invoice, 'status', 'Unknown')}, AmountDue: {getattr(invoice, 'amount_due', 'Unknown')}")
-            
             if (is_future_date and invoice.type == "ACCREC" and 
                 invoice.amount_due > 0 and 
                 invoice.status == "AUTHORISED" and
@@ -398,32 +325,11 @@ class XeroAgedReceivablesService:
                 is_negative = False
                 report_amount = 0
                 
-                # Debug: Show scenario matching
-                if len(all_invoices) < 5:
-                    with open("debug.log", "a") as debug_file:
-                        debug_file.write(f"[DEBUG] Scenario Check for {invoice.invoice_number}:\n")
-                        debug_file.write(f"[DEBUG] Issue Date: {issue_date} (<= {report_date}): {issue_date <= report_date if issue_date else 'N/A'}\n")
-                        debug_file.write(f"[DEBUG] Payment Date: {payment_date} (<= {report_date}): {payment_date <= report_date if payment_date else 'N/A'}\n")
-                        debug_file.write(f"[DEBUG] Due Date: {due_date} (> {report_date}): {due_date > report_date if due_date else 'N/A'}\n")
-                
-                # Special debug for INV-0801 and INV-0800
-                if getattr(invoice, 'invoice_number', '') in ["INV-0801", "INV-0800"]:
-                    print(f"[DEBUG] {invoice.invoice_number} - Issue: {issue_date}, Payment: {payment_date}, Due: {due_date}")
-                    print(f"[DEBUG] {invoice.invoice_number} - Report Date: {report_date}")
-                    print(f"[DEBUG] {invoice.invoice_number} - Issue <= Report: {issue_date <= report_date if issue_date else 'N/A'}")
-                    print(f"[DEBUG] {invoice.invoice_number} - Payment <= Report: {payment_date <= report_date if payment_date else 'N/A'}")
-                    print(f"[DEBUG] {invoice.invoice_number} - Due > Report: {due_date > report_date if due_date else 'N/A'}")
-                    print(f"[DEBUG] {invoice.invoice_number} - Amount Due: {amount_due}, Total: {total_amount}")
-                    print(f"[DEBUG] {invoice.invoice_number} - Status: {getattr(invoice, 'status', 'Unknown')}")
-                
                 # Scenario 1: Issue date in June, Payment in June, Due date in July - SHOULD NOT SHOW IN AR
                 if (issue_date and issue_date <= report_date and 
                     payment_date and payment_date <= report_date and 
                     due_date and due_date > report_date):
                     should_include = False
-                    if len(all_invoices) < 5:
-                        with open("debug.log", "a") as debug_file:
-                            debug_file.write(f"[DEBUG] Matched Scenario 1: Excluded\n")
                 
                 # Scenario 2: Issue date in June, Not Paid in June, Due date in July - SHOULD SHOW IN CURRENT
                 elif (issue_date and issue_date <= report_date and 
@@ -432,9 +338,6 @@ class XeroAgedReceivablesService:
                     should_include = True
                     is_negative = False
                     report_amount = amount_due if amount_due > 0 else total_amount
-                    if len(all_invoices) < 5:
-                        with open("debug.log", "a") as debug_file:
-                            debug_file.write(f"[DEBUG] Matched Scenario 2: Show in Current\n")
                 
                 # Scenario 3: Issue date in July, Paid in June, Due date in July - SHOULD SHOW IN CURRENT AS NEGATIVE
                 elif (issue_date and issue_date > report_date and 
@@ -443,17 +346,11 @@ class XeroAgedReceivablesService:
                     should_include = True
                     is_negative = True
                     report_amount = total_amount
-                    if len(all_invoices) < 5:
-                        with open("debug.log", "a") as debug_file:
-                            debug_file.write(f"[DEBUG] Matched Scenario 3: Show in Current as Negative\n")
                 
                 # Scenario 4: Issue date before report date, paid before report date - SHOULD NOT SHOW IN AR
                 elif (issue_date and issue_date <= report_date and 
                       payment_date and payment_date <= report_date):
                     should_include = False
-                    if len(all_invoices) < 5:
-                        with open("debug.log", "a") as debug_file:
-                            debug_file.write(f"[DEBUG] Matched Scenario 4: Excluded\n")
                 
                 # Scenario 5: Issue date before report date, paid after report date - SHOULD SHOW IN CURRENT AS POSITIVE
                 elif (issue_date and issue_date <= report_date and 
@@ -461,9 +358,6 @@ class XeroAgedReceivablesService:
                     should_include = True
                     is_negative = False  # Changed to False - normal payment should be positive
                     report_amount = total_amount
-                    if len(all_invoices) < 5:
-                        with open("debug.log", "a") as debug_file:
-                            debug_file.write(f"[DEBUG] Matched Scenario 5: Show in Current as Positive\n")
                 
                 # Default: Include if it was outstanding as of report date (unpaid invoices)
                 elif (issue_date and issue_date <= report_date and 
@@ -471,25 +365,16 @@ class XeroAgedReceivablesService:
                     should_include = True
                     is_negative = False
                     report_amount = amount_due if amount_due > 0 else total_amount
-                    if len(all_invoices) < 5:
-                        with open("debug.log", "a") as debug_file:
-                            debug_file.write(f"[DEBUG] Matched Default: Show as Outstanding\n")
                 
                 # Scenario 6: Issue date before report date, paid on report date - SHOULD NOT SHOW IN AR
                 elif (issue_date and issue_date <= report_date and 
                       payment_date and payment_date == report_date):
                     should_include = False
-                    if len(all_invoices) < 5:
-                        with open("debug.log", "a") as debug_file:
-                            debug_file.write(f"[DEBUG] Matched Scenario 6: Excluded (Paid on Report Date)\n")
                 
                 # Scenario 7: Issue date before report date, paid on or before report date - SHOULD NOT SHOW IN AR
                 elif (issue_date and issue_date <= report_date and 
                       payment_date and payment_date <= report_date):
                     should_include = False
-                    if len(all_invoices) < 5:
-                        with open("debug.log", "a") as debug_file:
-                            debug_file.write(f"[DEBUG] Matched Scenario 7: Excluded (Paid on or before Report Date)\n")
                 
                 if should_include:
                     # Create a modified invoice object with the correct amount
@@ -501,20 +386,6 @@ class XeroAgedReceivablesService:
                     # Override the amount_due with our calculated amount
                     setattr(modified_invoice, 'amount_due', report_amount)
                     setattr(modified_invoice, 'is_negative', is_negative)
-
-                    with open("debug.log", "a") as debug_file:
-                        debug_file.write(f"[DEBUG] Invoice: {invoice.invoice_number}\n")
-                        debug_file.write(f"[DEBUG] Invoice ID: {invoice.invoice_id}\n")
-                        debug_file.write(f"[DEBUG] Payment Date: {payment_date}\n")
-                        debug_file.write(f"[DEBUG] Issue Date: {issue_date}\n")
-                        debug_file.write(f"[DEBUG] Due Date: {due_date}\n")
-                        debug_file.write(f"[DEBUG] Amount Due: {amount_due}\n")
-                        debug_file.write(f"[DEBUG] Total Amount: {total_amount}\n")
-                        debug_file.write(f"[DEBUG] Status: {status}\n")
-                        debug_file.write(f"[DEBUG] Should Include: {should_include}\n")
-                        debug_file.write(f"[DEBUG] Is Negative: {is_negative}\n")
-                        debug_file.write(f"[DEBUG] Report Amount: {report_amount}\n")
-                        debug_file.write(f"[DEBUG] --------------------------------\n")
                     
                     all_invoices.append(modified_invoice)
         
@@ -522,10 +393,6 @@ class XeroAgedReceivablesService:
         # - DueDate > report_date
         # - Issue date and Due date must be in the same month (to avoid showing invoices issued in one month but due in another)
         for invoice in paid_invoices:
-            # Special check for INV-0799 in paid invoices
-            if getattr(invoice, 'invoice_number', '') == "INV-0799":
-                print(f"[DEBUG] FOUND INV-0799 in paid_invoices! Date: {getattr(invoice, 'date', 'Unknown')}, Status: {getattr(invoice, 'status', 'Unknown')}, DueDate: {getattr(invoice, 'due_date', 'Unknown')}")
-            
             if (invoice.type == "ACCREC" and
                 invoice.status == "PAID" and
                 invoice.due_date and invoice.due_date > report_date and
@@ -614,13 +481,6 @@ class XeroAgedReceivablesService:
                 if payment_date and hasattr(payment_date, 'date'):
                     payment_date = payment_date.date()
                 
-                # Special debug for INV-0799
-                if getattr(invoice, 'invoice_number', '') == "INV-0799":
-                    print(f"[DEBUG] INV-0799 processing - Issue: {issue_date}, Payment: {payment_date}, Due: {due_date}")
-                    print(f"[DEBUG] INV-0799 payments array: {payments}")
-                    print(f"[DEBUG] INV-0799 amount_paid: {amount_paid}")
-                    print(f"[DEBUG] INV-0799 status: {getattr(invoice, 'status', 'Unknown')}")
-                
                 # Check if this invoice matches the scenario: issued after report date, paid before report date
                 # OR if it's an AUTHORISED invoice with amount_paid > 0 (indicating it was paid)
                 if ((issue_date and issue_date > report_date and 
@@ -640,20 +500,6 @@ class XeroAgedReceivablesService:
                     # Set as negative amount (credit) in Current bucket
                     setattr(modified_invoice, 'amount_due', total_amount)
                     setattr(modified_invoice, 'is_negative', True)
-                    
-                    with open("debug.log", "a") as debug_file:
-                        debug_file.write(f"[DEBUG] EARLY PAID Invoice: {invoice.invoice_number}\n")
-                        debug_file.write(f"[DEBUG] EARLY PAID Invoice ID: {invoice.invoice_id}\n")
-                        debug_file.write(f"[DEBUG] EARLY PAID Payment Date: {payment_date}\n")
-                        debug_file.write(f"[DEBUG] EARLY PAID Issue Date: {issue_date}\n")
-                        debug_file.write(f"[DEBUG] EARLY PAID Due Date: {due_date}\n")
-                        debug_file.write(f"[DEBUG] EARLY PAID Total Amount: {total_amount}\n")
-                        debug_file.write(f"[DEBUG] EARLY PAID Status: {getattr(invoice, 'status', None)}\n")
-                        debug_file.write(f"[DEBUG] EARLY PAID Amount Paid: {amount_paid}\n")
-                        debug_file.write(f"[DEBUG] EARLY PAID Should Include: True\n")
-                        debug_file.write(f"[DEBUG] EARLY PAID Is Negative: True\n")
-                        debug_file.write(f"[DEBUG] EARLY PAID Report Amount: {total_amount}\n")
-                        debug_file.write(f"[DEBUG] EARLY PAID --------------------------------\n")
                     
                     all_invoices.append(modified_invoice)
 
