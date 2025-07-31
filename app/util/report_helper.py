@@ -1,4 +1,4 @@
-def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, period_type: str) -> str:
+def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, period_type: str, show_current: bool = True) -> str:
     """
     Calculate aging bucket based on configurable periods.
     
@@ -12,7 +12,7 @@ def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, 
     days = (report_date - due_date).days
     
     if days < 0:
-        return "Current"
+        return "Current"  # Always return Current for JSON response
     
     # For month-based periods, use actual calendar months
     if period_type.lower() == "month":
@@ -57,18 +57,19 @@ def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, 
         return "Older"
 
 
-def generate_bucket_names(periods: int, period_type: str) -> list:
+def generate_bucket_names(periods: int, period_type: str, show_current: bool = True) -> list:
     """
     Generate bucket names based on configurable periods.
     
     Args:
         periods: Number of aging periods
         period_type: Type of period (Day, Week, Month)
+        show_current: Whether to show Current bucket (always True for JSON, used for Excel headings)
     
     Returns:
         List of bucket names including Current, period buckets, and Older
     """
-    # Generate bucket names based on configurable periods
+    # Always generate separate Current and < 1 Month buckets for JSON response
     bucket_names = ["Current"]
     for i in range(1, periods + 1):
         if i == 1:
@@ -82,7 +83,7 @@ def generate_bucket_names(periods: int, period_type: str) -> list:
 
 def process_financial_item(item, report_date, periods, period_of, period_type, bucket_names, report, 
                          amount_field, date_field, is_negative=False, date_fallback=None, 
-                         connection_name=None, business_type=None, item_type="invoice"):
+                         connection_name=None, business_type=None, item_type="invoice", show_current=True):
     """
     Process a financial item (invoice, credit note, bank transaction) and categorize it into aging buckets.
     
@@ -151,7 +152,7 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
         item_date = date_fallback or report_date
     
     # Calculate aging bucket
-    bucket = calculate_aging_bucket(report_date, item_date, periods, period_of, period_type)
+    bucket = calculate_aging_bucket(report_date, item_date, periods, period_of, period_type, show_current)
     # Create a unique key that includes business unit and company
     if connection_name and business_type:
         key = f"{business_type}|{connection_name}|{contact_name}"

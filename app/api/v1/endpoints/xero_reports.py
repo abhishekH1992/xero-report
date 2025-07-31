@@ -27,6 +27,7 @@ async def get_aged_receivables(
     period_of: int = Query(1, description="Duration of each period"),
     period_type: str = Query("Month", description="Type of period (Day, Week, Month)"),
     app_id: Optional[int] = Query(None, ge=1, le=2, description="Filter by Xero app ID (1-2)"),
+    show_current: bool = Query(True, description="Show Current bucket separately (if false, combines Current and < 1 Month)"),
     aged_receivables_service: XeroAgedReceivablesService = Depends(get_aged_receivables_service),
     xero_auth_service: XeroAuthService = Depends(get_xero_auth_service),
     connection_id: str = Query(None, description="Connection ID")
@@ -60,7 +61,7 @@ async def get_aged_receivables(
         raise HTTPException(status_code=404, detail="No active Xero connections found")
 
     # Generate bucket names based on configurable periods
-    bucket_names = generate_bucket_names(periods, period_type)
+    bucket_names = generate_bucket_names(periods, period_type, show_current)
     
     all_report_data = {}
     total_invoices = 0
@@ -170,7 +171,8 @@ async def get_aged_receivables(
                             is_negative=True,  # Mark as negative to show as credit
                             connection_name=connection.tenant_name,
                             business_type=getattr(connection, 'business_type', 'Commercial Property'),
-                            item_type="invoice"
+                            item_type="invoice",
+                            show_current=show_current
                         )
                     # Group by contact for other paid invoices with future due dates
                     elif is_negative:
@@ -207,7 +209,8 @@ async def get_aged_receivables(
                             is_negative=is_negative,
                             connection_name=connection.tenant_name,
                             business_type=getattr(connection, 'business_type', 'Commercial Property'),
-                            item_type="invoice"
+                            item_type="invoice",
+                            show_current=show_current
                         )
             
             # Process grouped paid invoices
@@ -244,7 +247,8 @@ async def get_aged_receivables(
                             is_negative=True,  # Mark as negative to show as credit
                             connection_name=connection.tenant_name,
                             business_type=getattr(connection, 'business_type', 'Commercial Property'),
-                            item_type="invoice"
+                            item_type="invoice",
+                            show_current=show_current
                         )
                 else:
                     # Fallback to grouped approach if we can't find individual invoices
@@ -270,7 +274,8 @@ async def get_aged_receivables(
                         is_negative=invoice_data['is_negative'],
                         connection_name=connection.tenant_name,
                         business_type=getattr(connection, 'business_type', 'Commercial Property'),
-                        item_type="invoice"
+                        item_type="invoice",
+                        show_current=show_current
                     )
 
             # Process credit notes (apply as negative values)
@@ -298,7 +303,8 @@ async def get_aged_receivables(
                     date_fallback=report_date_obj,
                     connection_name=connection.tenant_name,
                     business_type=getattr(connection, 'business_type', 'Commercial Property'),
-                    item_type="credit_note"
+                    item_type="credit_note",
+                    show_current=show_current
                 )
 
             # Process overpayments (apply as negative values for credits)
@@ -317,7 +323,8 @@ async def get_aged_receivables(
                     date_fallback=report_date_obj,
                     connection_name=connection.tenant_name,
                     business_type=getattr(connection, 'business_type', 'Commercial Property'),
-                    item_type="overpayment"
+                    item_type="overpayment",
+                    show_current=show_current
                 )
                 
         except Exception as e:
@@ -342,9 +349,18 @@ async def get_aged_receivables(
             "Company": data.get("company", "Unknown"),
             "Contact": contact_name
         }
+        
+        # Add bucket amounts to row
         for bucket_name in bucket_names:
             amount = data.get(bucket_name, 0)
-            row[bucket_name] = amount
+            if bucket_name == "Current" and not show_current:
+                # When show_current=False, combine Current and < 1 Month amounts
+                current_amount = data.get("Current", 0)
+                less_than_one_amount = data.get("< 1 Month", 0)
+                row["Current"] = current_amount + less_than_one_amount
+            else:
+                row[bucket_name] = amount
+        
         row["Total"] = total_amount
         row["Comments"] = ""  # Add blank comments column
         # Generate system comments
@@ -356,11 +372,19 @@ async def get_aged_receivables(
             excel_data.append(row)
 
     # Define columns for Excel export
+    excel_columns = []
+    for bucket in bucket_names:
+        if bucket == "Current" and not show_current:
+            # Combine Current and < 1 Month in Excel header
+            excel_columns.append({"header": "Current & < 1 Month", "key": bucket, "width": 15, "format": "currency"})
+        else:
+            excel_columns.append({"header": bucket, "key": bucket, "width": 15, "format": "currency"})
+    
     columns = [
         {"header": "Business Unit", "key": "Business Unit", "width": 20, "format": "text"},
         {"header": "Company", "key": "Company", "width": 25, "format": "text"},
         {"header": "Contact", "key": "Contact", "width": 30, "format": "text"},
-        *[{"header": bucket, "key": bucket, "width": 15, "format": "currency"} for bucket in bucket_names],
+        *excel_columns,
         {"header": "Total", "key": "Total", "width": 15, "format": "currency"},
         {"header": "Comments", "key": "Comments", "width": 25, "format": "text"},
         {"header": "System Comments", "key": "System Comments", "width": 60, "format": "text"}
