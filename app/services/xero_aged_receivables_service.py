@@ -439,11 +439,17 @@ class XeroAgedReceivablesService:
                         payment_date = None
                 
                 # Get payment date from Payments array if FullyPaidOnDate not available
-                if not payment_date and payments:
-                    latest_payment_date = None
+                # Also calculate total paid up to report_date for early payments
+                if payments:
+                    # Calculate total amount paid up to report_date
+                    total_paid_up_to_report_date = 0.0
+                    has_payments_before_report_date = False
+                    
                     for payment in payments:
                         if hasattr(payment, 'date'):
                             payment_dt = payment.date
+                            payment_amount = getattr(payment, 'amount', 0.0)
+                            
                             if isinstance(payment_dt, str) and payment_dt.startswith('/Date('):
                                 try:
                                     timestamp_str = payment_dt.split('(')[1].split('+')[0]
@@ -460,14 +466,20 @@ class XeroAgedReceivablesService:
                                     continue
                             elif hasattr(payment_dt, 'date'):
                                 payment_dt = payment_dt.date()
+                            elif hasattr(payment_dt, 'year') and hasattr(payment_dt, 'month') and hasattr(payment_dt, 'day'):
+                                # Already a date object, no conversion needed
+                                pass
                             else:
                                 continue
-                            
-                            if latest_payment_date is None or payment_dt > latest_payment_date:
-                                latest_payment_date = payment_dt
+
+                            if payment_dt <= report_date:
+                                total_paid_up_to_report_date += float(payment_amount)
+                                has_payments_before_report_date = True
                     
-                    if latest_payment_date:
-                        payment_date = latest_payment_date
+                    # If we found payments before or on report_date, set payment_date and store the amount
+                    if has_payments_before_report_date:
+                        payment_date = report_date
+                        setattr(invoice, 'total_paid_up_to_report_date', total_paid_up_to_report_date)
                 
                 # Convert dates to date objects if needed
                 issue_date = getattr(invoice, 'date', None)
@@ -498,7 +510,13 @@ class XeroAgedReceivablesService:
                             setattr(modified_invoice, attr, getattr(invoice, attr))
                     
                     # Set as negative amount (credit) in Current bucket
-                    setattr(modified_invoice, 'amount_due', total_amount)
+                    # Use total_paid_up_to_report_date if available, otherwise use total_amount
+                    if hasattr(invoice, 'total_paid_up_to_report_date'):
+                        report_amount = getattr(invoice, 'total_paid_up_to_report_date', total_amount)
+                    else:
+                        report_amount = total_amount
+                    
+                    setattr(modified_invoice, 'amount_due', report_amount)
                     setattr(modified_invoice, 'is_negative', True)
                     
                     all_invoices.append(modified_invoice)
