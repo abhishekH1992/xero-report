@@ -54,15 +54,15 @@ class XeroAgedReceivablesService:
             invoices = self._get_unpaid_invoices(accounting_api, tenant_id, date_for_xero, is_future_date)
             
             # Get credit notes
-            # credit_notes = self._get_credit_notes(accounting_api, tenant_id, date_for_xero)
-            credit_notes = []
+            credit_notes = self._get_credit_notes(accounting_api, tenant_id, date_for_xero)
+            # credit_notes = []
             
             # Get bank transactions
             # bank_transactions = self._get_bank_transactions(accounting_api, tenant_id, date_for_xero)
 
             # Get Overpayments
-            # overpayments = self._get_overpayments(accounting_api, tenant_id, date_for_xero)
-            overpayments = []
+            overpayments = self._get_overpayments(accounting_api, tenant_id, date_for_xero)
+            # overpayments = []
 
             return {
                 "invoices": invoices,
@@ -112,7 +112,7 @@ class XeroAgedReceivablesService:
                     where_clause_unpaid,  # where
                     empty,      # order
                     empty,      # ids
-                    ["INV-1256", "INV-1352"],      # invoice_numbers
+                    empty,      # invoice_numbers
                     empty,      # contact_ids
                     ["AUTHORISED", "PAID"] if not is_future_date else ["AUTHORISED"],  # statuses - more efficient than WHERE clause
                     page,       # page
@@ -187,43 +187,43 @@ class XeroAgedReceivablesService:
         early_paid_invoices = []
         page = 1
         
-        # if not is_future_date:
-        #     while True:
-        #         try:
-        #             where_clause_early_paid = f'Type == "ACCREC" && Date > DateTime({date_for_xero})'
-        #             invoices_response = accounting_api.get_invoices(
-        #                 tenant_id,  # xero_tenant_id
-        #                 empty,      # if_modified_since
-        #                 where_clause_early_paid,  # where
-        #                 empty,      # order
-        #                 empty,      # ids
-        #                 empty,      # invoice_numbers
-        #                 empty,      # contact_ids
-        #                 ["PAID", "AUTHORISED"],   # statuses - include both to catch all cases
-        #                 page,       # page
-        #                 empty,      # include_archived
-        #                 empty,      # created_by_my_app
-        #                 empty,      # unitdp
-        #                 "False",    # summary_only - Changed from "True" to "False" to get full details
-        #                 page_size,  # page_size
-        #                 empty       # search_term
-        #             )
+        if not is_future_date:
+            while True:
+                try:
+                    where_clause_early_paid = f'Type == "ACCREC" && Date > DateTime({date_for_xero})'
+                    invoices_response = accounting_api.get_invoices(
+                        tenant_id,  # xero_tenant_id
+                        empty,      # if_modified_since
+                        where_clause_early_paid,  # where
+                        empty,      # order
+                        empty,      # ids
+                        empty,      # invoice_numbers
+                        empty,      # contact_ids
+                        ["PAID", "AUTHORISED"],   # statuses - include both to catch all cases
+                        page,       # page
+                        empty,      # include_archived
+                        empty,      # created_by_my_app
+                        empty,      # unitdp
+                        "False",    # summary_only - Changed from "True" to "False" to get full details
+                        page_size,  # page_size
+                        empty       # search_term
+                    )
                     
-        #             if not invoices_response.invoices:
-        #                 break
+                    if not invoices_response.invoices:
+                        break
                     
-        #             early_paid_invoices.extend(invoices_response.invoices)
+                    early_paid_invoices.extend(invoices_response.invoices)
                     
-        #             if len(invoices_response.invoices) < page_size:
-        #                 break
+                    if len(invoices_response.invoices) < page_size:
+                        break
                     
-        #             if page >= 100:  # Safety limit
-        #                 break
+                    if page >= 100:  # Safety limit
+                        break
                         
-        #             page += 1
+                    page += 1
                     
-        #         except Exception as e:
-        #             break
+                except Exception as e:
+                    break
         
         for invoice in unpaid_invoices:
             if (is_future_date and invoice.type == "ACCREC" and 
