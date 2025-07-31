@@ -27,6 +27,7 @@ async def get_aged_receivables(
     period_of: int = Query(1, description="Duration of each period"),
     period_type: str = Query("Month", description="Type of period (Day, Week, Month)"),
     app_id: Optional[int] = Query(None, ge=1, le=2, description="Filter by Xero app ID (1-2)"),
+    show_current: bool = Query(True, description="Show Current bucket separately (if false, combines Current and < 1 Month)"),
     aged_receivables_service: XeroAgedReceivablesService = Depends(get_aged_receivables_service),
     xero_auth_service: XeroAuthService = Depends(get_xero_auth_service),
     connection_id: str = Query(None, description="Connection ID")
@@ -46,6 +47,8 @@ async def get_aged_receivables(
     else:
         report_date_obj = datetime.utcnow().date()
 
+    is_future_date = report_date_obj > datetime.now().date()
+
     # Get all active connections with app_id filtering
     if connection_id:
         connections = [xero_auth_service.get_connection(connection_id)]
@@ -58,7 +61,7 @@ async def get_aged_receivables(
         raise HTTPException(status_code=404, detail="No active Xero connections found")
 
     # Generate bucket names based on configurable periods
-    bucket_names = generate_bucket_names(periods, period_type)
+    bucket_names = generate_bucket_names(periods, period_type, show_current)
     
     all_report_data = {}
     total_invoices = 0
@@ -73,15 +76,16 @@ async def get_aged_receivables(
                 periods=periods,
                 period_of=period_of,
                 period_type=period_type,
-                app_id=connection.app_id
+                app_id=connection.app_id,
+                is_future_date=is_future_date
             )
             
             invoices = data["invoices"]
             credit_notes = data["credit_notes"]
-            overpayments = data["overpayments"]  # Now properly contains overpayments from the service
+            overpayments = data["overpayments"] 
             
             total_invoices += len(invoices)
-            
+
             # Process invoices
             # First, group invoices by contact to handle multiple paid invoices per contact
             contact_invoices = {}
@@ -93,6 +97,9 @@ async def get_aged_receivables(
                 total_amount = getattr(invoice, 'total', 0.0)
                 contact_name = getattr(invoice.contact, 'name', 'Unknown') if hasattr(invoice, 'contact') and invoice.contact else 'Unknown'
                 
+                # Check if this invoice was marked as negative by our early_paid_invoices logic
+                is_negative_flag = getattr(invoice, 'is_negative', False)
+                
                 # Convert due_date to date if it's a string
                 if due_date and isinstance(due_date, str):
                     due_date = datetime.strptime(due_date[:10], "%Y-%m-%d").date()
@@ -103,22 +110,72 @@ async def get_aged_receivables(
                 report_date_field = due_date
                 is_negative = False
                 
-                if amount_due != 0.0:
+                # First check if this invoice was marked as negative by our early_paid_invoices logic
+                if is_negative_flag:
+                    include_in_report = True
+                    report_amount = amount_due  # This should be the total_amount from our logic
+                    report_date_field = due_date
+                    is_negative = True
+                    
+                elif amount_due != 0.0:
                     # Normal unpaid invoice - use due date and amount due
                     include_in_report = True
                     report_amount = amount_due
                     report_date_field = due_date
                     is_negative = amount_due < 0
+                    
                 elif status == "PAID" and due_date and due_date > report_date_obj and amount_due == 0.0:
-                    # Paid invoice with future due date and zero amount due = credit
-                    include_in_report = True
-                    report_amount = total_amount  # Use total amount (will be made negative)
-                    report_date_field = due_date  # Use actual due date for proper aging
-                    is_negative = True  # Mark as negative to show as credit
+                    # For past reports, only include paid invoices that were issued before the report date
+                    # For future reports, include all paid invoices with future due dates
+                    invoice_date = getattr(invoice, 'date', None)
+                    if invoice_date and hasattr(invoice_date, 'date'):
+                        invoice_date = invoice_date.date()
+                    
+                    if report_date_obj <= datetime.now().date():
+                        # Past report logic: Only include if invoice was issued before report date
+                        if invoice_date and invoice_date <= report_date_obj:
+                            include_in_report = True
+                            report_amount = total_amount  # Use total amount (will be made negative)
+                            report_date_field = due_date  # Use actual due date for proper aging
+                            is_negative = True  # Mark as negative to show as credit
+                    else:
+                        # Future report logic: Include all paid invoices with future due dates
+                        include_in_report = True
+                        report_amount = total_amount  # Use total amount (will be made negative)
+                        report_date_field = due_date  # Use actual due date for proper aging
+                        is_negative = True  # Mark as negative to show as credit
                 
                 if include_in_report and report_date_field:
-                    # Group by contact for paid invoices with future due dates
-                    if is_negative:
+                    # Handle early_paid_invoices (marked with is_negative_flag) individually
+                    if is_negative_flag:
+                        # Process early_paid_invoices individually to preserve invoice numbers
+                        item = type("Item", (), {})()
+                        setattr(item, "contact", invoice.contact)
+                        setattr(item, "due_date", report_date_field)
+                        setattr(item, "amount_due", report_amount)
+                        setattr(item, "status", status)
+                        setattr(item, "total", total_amount)
+                        setattr(item, "invoice_number", getattr(invoice, 'invoice_number', None))
+                        setattr(item, "invoice_id", getattr(invoice, 'invoice_id', None))
+                        
+                        process_financial_item(
+                            item,
+                            report_date_obj,
+                            periods,
+                            period_of,
+                            period_type,
+                            bucket_names,
+                            all_report_data,
+                            amount_field="amount_due",
+                            date_field="due_date",
+                            is_negative=True,  # Mark as negative to show as credit
+                            connection_name=connection.tenant_name,
+                            business_type=getattr(connection, 'business_type', 'Commercial Property'),
+                            item_type="invoice",
+                            show_current=show_current
+                        )
+                    # Group by contact for other paid invoices with future due dates
+                    elif is_negative:
                         if contact_name not in contact_invoices:
                             contact_invoices[contact_name] = {
                                 'contact': invoice.contact,
@@ -152,7 +209,8 @@ async def get_aged_receivables(
                             is_negative=is_negative,
                             connection_name=connection.tenant_name,
                             business_type=getattr(connection, 'business_type', 'Commercial Property'),
-                            item_type="invoice"
+                            item_type="invoice",
+                            show_current=show_current
                         )
             
             # Process grouped paid invoices
@@ -189,7 +247,8 @@ async def get_aged_receivables(
                             is_negative=True,  # Mark as negative to show as credit
                             connection_name=connection.tenant_name,
                             business_type=getattr(connection, 'business_type', 'Commercial Property'),
-                            item_type="invoice"
+                            item_type="invoice",
+                            show_current=show_current
                         )
                 else:
                     # Fallback to grouped approach if we can't find individual invoices
@@ -215,11 +274,21 @@ async def get_aged_receivables(
                         is_negative=invoice_data['is_negative'],
                         connection_name=connection.tenant_name,
                         business_type=getattr(connection, 'business_type', 'Commercial Property'),
-                        item_type="invoice"
+                        item_type="invoice",
+                        show_current=show_current
                     )
 
             # Process credit notes (apply as negative values)
             for cn in credit_notes:
+                # For credit notes that were processed after the report date, use total amount
+                # For credit notes with remaining credit, use remaining_credit
+                if getattr(cn, 'remaining_credit', 0) > 0:
+                    amount_field = "remaining_credit"
+                    print(f"[DEBUG] Using remaining_credit: {getattr(cn, 'remaining_credit', 0)}")
+                else:
+                    amount_field = "total"
+                    print(f"[DEBUG] Using total: {getattr(cn, 'total', 0)}")
+                
                 process_financial_item(
                     item=cn,
                     report_date=report_date_obj,
@@ -228,13 +297,14 @@ async def get_aged_receivables(
                     period_type=period_type,
                     bucket_names=bucket_names,
                     report=all_report_data,
-                    amount_field="remaining_credit",
+                    amount_field=amount_field,
                     date_field="date",
                     is_negative=True,
                     date_fallback=report_date_obj,
                     connection_name=connection.tenant_name,
                     business_type=getattr(connection, 'business_type', 'Commercial Property'),
-                    item_type="credit_note"
+                    item_type="credit_note",
+                    show_current=show_current
                 )
 
             # Process overpayments (apply as negative values for credits)
@@ -253,7 +323,8 @@ async def get_aged_receivables(
                     date_fallback=report_date_obj,
                     connection_name=connection.tenant_name,
                     business_type=getattr(connection, 'business_type', 'Commercial Property'),
-                    item_type="overpayment"
+                    item_type="overpayment",
+                    show_current=show_current
                 )
                 
         except Exception as e:
@@ -278,9 +349,18 @@ async def get_aged_receivables(
             "Company": data.get("company", "Unknown"),
             "Contact": contact_name
         }
+        
+        # Add bucket amounts to row
         for bucket_name in bucket_names:
             amount = data.get(bucket_name, 0)
-            row[bucket_name] = amount
+            if bucket_name == "Current" and not show_current:
+                # When show_current=False, combine Current and < 1 Month amounts
+                current_amount = data.get("Current", 0)
+                less_than_one_amount = data.get("< 1 Month", 0)
+                row["Current"] = current_amount + less_than_one_amount
+            else:
+                row[bucket_name] = amount
+        
         row["Total"] = total_amount
         row["Comments"] = ""  # Add blank comments column
         # Generate system comments
@@ -292,11 +372,19 @@ async def get_aged_receivables(
             excel_data.append(row)
 
     # Define columns for Excel export
+    excel_columns = []
+    for bucket in bucket_names:
+        if bucket == "Current" and not show_current:
+            # Combine Current and < 1 Month in Excel header
+            excel_columns.append({"header": "Current & < 1 Month", "key": bucket, "width": 15, "format": "currency"})
+        else:
+            excel_columns.append({"header": bucket, "key": bucket, "width": 15, "format": "currency"})
+    
     columns = [
         {"header": "Business Unit", "key": "Business Unit", "width": 20, "format": "text"},
         {"header": "Company", "key": "Company", "width": 25, "format": "text"},
         {"header": "Contact", "key": "Contact", "width": 30, "format": "text"},
-        *[{"header": bucket, "key": bucket, "width": 15, "format": "currency"} for bucket in bucket_names],
+        *excel_columns,
         {"header": "Total", "key": "Total", "width": 15, "format": "currency"},
         {"header": "Comments", "key": "Comments", "width": 25, "format": "text"},
         {"header": "System Comments", "key": "System Comments", "width": 60, "format": "text"}

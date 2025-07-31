@@ -266,8 +266,17 @@ class XeroAuthService:
                 
         except httpx.HTTPStatusError as e:
             response_time_ms = int((time.time() - start_time) * 1000)
-            error_data = e.response.json() if e.response.content else {}
-            error_message = error_data.get('error_description', str(e))
+            
+            # Try to get detailed error information
+            error_message = "Unknown error"
+            try:
+                if e.response.content:
+                    error_data = e.response.json()
+                    error_message = error_data.get('error_description', error_data.get('error', str(e)))
+                else:
+                    error_message = f"HTTP {e.response.status_code}: {e.response.reason_phrase}"
+            except Exception as parse_error:
+                error_message = f"HTTP {e.response.status_code}: {e.response.reason_phrase} (Failed to parse response: {str(parse_error)})"
             
             # Get connection ID for logging
             connection_id = None

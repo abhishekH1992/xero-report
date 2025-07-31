@@ -118,7 +118,11 @@ async def refresh_token(
         # Get existing connection
         connection = xero_service.get_connection(tenant_id, app_id)
         if not connection:
-            raise HTTPException(status_code=404, detail="Connection not found")
+            raise HTTPException(status_code=404, detail=f"Connection not found for tenant {tenant_id}, app_id {app_id}")
+        
+        print(f"Found connection: {connection.tenant_name} (ID: {connection.tenant_id}, App: {connection.app_id})")
+        print(f"Token expires at: {connection.expires_at}")
+        print(f"Current time: {datetime.utcnow()}")
         
         # Check if token needs refresh
         buffer_time = datetime.now(timezone.utc).replace(second=0, microsecond=0)
@@ -129,6 +133,8 @@ async def refresh_token(
                 "message": "Token is still valid",
                 "expires_at": connection.expires_at.isoformat()
             }
+        
+        print(f"Token needs refresh. Buffer time: {buffer_time}, Expires: {connection.expires_at}")
         
         # Refresh token
         token_response = await xero_service.refresh_access_token(
@@ -154,7 +160,16 @@ async def refresh_token(
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Token refresh failed: {str(e)}")
+        import traceback
+        error_details = str(e)
+        if not error_details or error_details == "Token refresh failed: ":
+            error_details = f"Unknown error occurred: {type(e).__name__}"
+        
+        # Log the full error for debugging
+        print(f"Token refresh error for tenant {tenant_id}, app_id {app_id}: {error_details}")
+        print(f"Full traceback: {traceback.format_exc()}")
+        
+        raise HTTPException(status_code=500, detail=f"Token refresh failed: {error_details}")
 
 
 @router.get("/connections")

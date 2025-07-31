@@ -1,5 +1,5 @@
 from app.models.xero_auth import XeroTokenResponse
-from datetime import datetime
+from datetime import datetime, timezone
 
 def register_xero_token_handlers(api_client, token_dict, tenant_id, xero_service, app_id=None):
     """
@@ -25,11 +25,11 @@ def register_xero_token_handlers(api_client, token_dict, tenant_id, xero_service
             if expires_at:
                 if isinstance(expires_at, float):
                     # expires_at is a timestamp, convert to datetime
-                    expires_at_dt = datetime.fromtimestamp(expires_at)
-                    expires_in = int((expires_at_dt - datetime.utcnow()).total_seconds())
+                    expires_at_dt = datetime.fromtimestamp(expires_at, tz=timezone.utc)
+                    expires_in = int((expires_at_dt - datetime.now(timezone.utc)).total_seconds())
                 else:
                     # expires_at is already a datetime
-                    expires_in = int((expires_at - datetime.utcnow()).total_seconds())
+                    expires_in = int((expires_at - datetime.now(timezone.utc)).total_seconds())
             
             # Convert scope list to string if needed
             scope = new_token.get("scope", token_dict["scope"])
@@ -40,7 +40,7 @@ def register_xero_token_handlers(api_client, token_dict, tenant_id, xero_service
             final_expires_at = None
             if expires_at:
                 if isinstance(expires_at, float):
-                    final_expires_at = datetime.fromtimestamp(expires_at)
+                    final_expires_at = datetime.fromtimestamp(expires_at, tz=timezone.utc)
                 elif isinstance(expires_at, datetime):
                     final_expires_at = expires_at
             

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib
 from typing import Optional, List, Dict, Any
 
@@ -17,7 +17,7 @@ class XeroAuthRepository:
     def create_auth_state(self, state: str, code_verifier: Optional[str] = None, 
                          expires_in_hours: int = 1, app_id: int = 1) -> XeroAuthState:
         """Create a new OAuth2 auth state with app_id"""
-        expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=expires_in_hours)
         
         auth_state = XeroAuthState(
             state=state,
@@ -36,7 +36,7 @@ class XeroAuthRepository:
         return self.db.query(XeroAuthState).filter(
             and_(
                 XeroAuthState.state == state,
-                XeroAuthState.expires_at > datetime.utcnow()
+                XeroAuthState.expires_at > datetime.now(timezone.utc)
             )
         ).first()
     
@@ -56,7 +56,7 @@ class XeroAuthRepository:
         """Clean up expired auth states and return count of deleted records"""
         expired_states = self.db.query(XeroAuthState).filter(
             or_(
-                XeroAuthState.expires_at <= datetime.utcnow(),
+                XeroAuthState.expires_at <= datetime.now(timezone.utc),
                 XeroAuthState.used == True
             )
         ).all()
@@ -147,7 +147,7 @@ class XeroAuthRepository:
             connection.refresh_token = refresh_token
             connection.expires_at = expires_at
             connection.scope = scope
-            connection.updated_at = datetime.utcnow()
+            connection.updated_at = datetime.now(timezone.utc)
             
             self.db.commit()
             self.db.refresh(connection)
@@ -190,7 +190,7 @@ class XeroAuthRepository:
             existing_connection.expires_at = expires_at
             existing_connection.scope = scope
             existing_connection.business_type = business_type
-            existing_connection.updated_at = datetime.utcnow()
+            existing_connection.updated_at = datetime.now(timezone.utc)
             existing_connection.is_active = True  # Reactivate if it was deactivated
             
             self.db.commit()
@@ -223,7 +223,7 @@ class XeroAuthRepository:
         
         if connection:
             connection.is_active = False
-            connection.updated_at = datetime.utcnow()
+            connection.updated_at = datetime.now(timezone.utc)
             self.db.commit()
             return True
         return False
@@ -261,7 +261,7 @@ class XeroAuthRepository:
     
     def get_expired_connections(self, buffer_minutes: int = 5) -> List[XeroConnection]:
         """Get connections that need token refresh, grouped by app"""
-        buffer_time = datetime.utcnow() + timedelta(minutes=buffer_minutes)
+        buffer_time = datetime.now(timezone.utc) + timedelta(minutes=buffer_minutes)
         
         return self.db.query(XeroConnection).filter(
             and_(
@@ -355,7 +355,7 @@ class XeroAuthRepository:
         expired_connections = len(self.get_expired_connections())
         
         recent_logs = self.db.query(XeroApiLog).filter(
-            XeroApiLog.created_at >= datetime.utcnow() - timedelta(hours=24)
+            XeroApiLog.created_at >= datetime.now(timezone.utc) - timedelta(hours=24)
         ).count()
         
         return {
