@@ -90,6 +90,52 @@ def test_aged_receivables_integration(api_key):
     assert "aging_config" in data
     assert "generated_at" in data
     assert "total_invoices" in data
+    assert "failed_connections" in data
+    assert "connection_summary" in data
+    
+    # Check connection summary structure
+    connection_summary = data["connection_summary"]
+    assert "total_connections_attempted" in connection_summary
+    assert "successful_connections" in connection_summary
+    assert "failed_connections_count" in connection_summary
+    assert "success_rate" in connection_summary
+    
+    # Verify failed_connections is a list
+    assert isinstance(data["failed_connections"], list)
+
+def test_aged_receivables_with_failed_connections(api_key):
+    """Test that failed connections are properly tracked when invalid connection IDs are provided"""
+    response = client.get(
+        "/api/v1/reports/aged-receivables?connection_id=invalid_id_1,invalid_id_2",
+        headers={"X-API-Key": api_key}
+    )
+    
+    # Should still return 200 even with failed connections
+    assert response.status_code == 200
+    data = response.json()
+    
+    # Check that failed connections are tracked
+    assert "failed_connections" in data
+    assert "connection_summary" in data
+    
+    failed_connections = data["failed_connections"]
+    connection_summary = data["connection_summary"]
+    
+    # Should have 2 failed connections
+    assert len(failed_connections) == 2
+    assert connection_summary["failed_connections_count"] == 2
+    assert connection_summary["total_connections_attempted"] == 2
+    assert connection_summary["successful_connections"] == 0
+    assert connection_summary["success_rate"] == "0%"
+    
+    # Check structure of failed connection entries
+    for failed_conn in failed_connections:
+        assert "connection_id" in failed_conn
+        assert "tenant_id" in failed_conn
+        assert "tenant_name" in failed_conn
+        assert "app_id" in failed_conn
+        assert "error" in failed_conn
+        assert "error_details" in failed_conn
 
 def test_aged_receivables_unauthorized():
     response = client.get("/api/v1/reports/aged-receivables")

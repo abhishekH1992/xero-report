@@ -30,7 +30,7 @@ async def get_aged_receivables(
     show_current: bool = Query(True, description="Show Current bucket separately (if false, combines Current and < 1 Month)"),
     aged_receivables_service: XeroAgedReceivablesService = Depends(get_aged_receivables_service),
     xero_auth_service: XeroAuthService = Depends(get_xero_auth_service),
-    connection_id: str = Query(None, description="Connection ID")
+    connection_id: str = Query(None, description="Connection ID(s) - comma-separated for multiple connections")
 ):
     """
     Custom Aged Receivables report: fetch all unpaid invoices from all connections, 
@@ -50,14 +50,44 @@ async def get_aged_receivables(
     is_future_date = report_date_obj > datetime.now().date()
 
     # Get all active connections with app_id filtering
+    failed_connections = []  # Track failed connections from initial retrieval
+    connections = []
+    
     if connection_id:
-        connections = [xero_auth_service.get_connection(connection_id)]
+        # Handle comma-separated connection IDs
+        connection_ids = [cid.strip() for cid in connection_id.split(',')]
+        for cid in connection_ids:
+            try:
+                connection = xero_auth_service.get_connection(cid)
+                if connection:
+                    connections.append(connection)
+                else:
+                    # Connection not found
+                    failed_connections.append({
+                        "connection_id": cid,
+                        "tenant_id": None,
+                        "tenant_name": "Unknown",
+                        "app_id": None,
+                        "error": "Connection not found",
+                        "error_details": f"Connection with ID {cid} was not found in the database"
+                    })
+            except Exception as e:
+                # Log error but continue with other connections
+                print(f"Error getting connection {cid}: {str(e)}")
+                failed_connections.append({
+                    "connection_id": cid,
+                    "tenant_id": None,
+                    "tenant_name": "Unknown",
+                    "app_id": None,
+                    "error": str(e),
+                    "error_details": f"Failed to retrieve connection {cid}: {str(e)}"
+                })
     elif app_id:
         connections = xero_auth_service.get_connections_by_app(app_id)
     else:
         connections = xero_auth_service.get_all_connections()
     
-    if not connections:
+    if not connections and not failed_connections:
         raise HTTPException(status_code=404, detail="No active Xero connections found")
 
     # Generate bucket names based on configurable periods
@@ -65,6 +95,7 @@ async def get_aged_receivables(
     
     all_report_data = {}
     total_invoices = 0
+    # failed_connections is already initialized above for initial connection retrieval
     
     # Process each connection
     for connection in connections:
@@ -332,6 +363,17 @@ async def get_aged_receivables(
             error_details = traceback.format_exc()
             print(f"[XERO REPORT] Error processing connection {connection.tenant_name} (App {connection.app_id}): {str(e)}")
             print(f"[XERO REPORT] Full error details: {error_details}")
+            
+            # Track failed connection
+            failed_connections.append({
+                "connection_id": connection.id,
+                "tenant_id": connection.tenant_id,
+                "tenant_name": connection.tenant_name,
+                "app_id": connection.app_id,
+                "error": str(e),
+                "error_details": error_details
+            })
+            
             # Continue with other connections even if one fails
             continue
 
@@ -414,5 +456,12 @@ async def get_aged_receivables(
             "bucket_names": bucket_names
         },
         "excel_file": excel_file_path,
-        "app_filter": app_id
+        "app_filter": app_id,
+        "failed_connections": failed_connections,
+        "connection_summary": {
+            "total_connections_attempted": len(connections) + len(failed_connections),
+            "successful_connections": len(connections),
+            "failed_connections_count": len(failed_connections),
+            "success_rate": f"{(len(connections) / (len(connections) + len(failed_connections)) * 100):.1f}%" if (len(connections) + len(failed_connections)) > 0 else "0%"
+        }
     }
