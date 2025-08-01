@@ -199,7 +199,7 @@ class XeroAgedReceivablesService:
                         empty,      # if_modified_since
                         where_clause_early_paid,  # where
                         empty,      # order
-                        ["INV-8561"],      # ids
+                        empty,      # ids
                         empty,      # invoice_numbers
                         empty,      # contact_ids
                         ["PAID", "AUTHORISED"],   # statuses - include both to catch all cases
@@ -327,54 +327,57 @@ class XeroAgedReceivablesService:
                     payment_date = payment_date.date()
                 
                 # Calculate credit notes attached to this invoice
-                credit_notes_total = 0.0
-                credit_notes = getattr(invoice, 'credit_notes', [])
-                if credit_notes:
-                    for credit_note in credit_notes:
-                        credit_note_amount = getattr(credit_note, 'applied_amount', 0.0)
-                        if credit_note_amount:
-                            credit_notes_total += float(credit_note_amount)
+                # credit_notes_total = 0.0
+                # credit_notes = getattr(invoice, 'credit_notes', [])
+                # if credit_notes:
+                #     for credit_note in credit_notes:
+                #         credit_note_amount = getattr(credit_note, 'applied_amount', 0.0)
+                #         if credit_note_amount:
+                #             credit_notes_total += float(credit_note_amount)
                 
                 # Calculate payments made before or on report date
-                payments_before_report = 0.0
-                payments = getattr(invoice, 'payments', [])
-                if payments:
-                    for payment in payments:
-                        if hasattr(payment, 'date'):
-                            payment_dt = payment.date
-                            payment_amount = getattr(payment, 'amount', 0.0)
+                # payments_before_report = 0.0
+                # payments = getattr(invoice, 'payments', [])
+                # if payments:
+                #     for payment in payments:
+                #         if hasattr(payment, 'date'):
+                #             payment_dt = payment.date
+                #             payment_amount = getattr(payment, 'amount', 0.0)
                             
-                            # Handle Xero date format
-                            if isinstance(payment_dt, str) and payment_dt.startswith('/Date('):
-                                try:
-                                    timestamp_str = payment_dt.split('(')[1].split('+')[0]
-                                    timestamp = int(timestamp_str) / 1000
-                                    payment_dt = datetime.fromtimestamp(timestamp).date()
-                                except (ValueError, IndexError):
-                                    continue
-                            elif isinstance(payment_dt, str) and payment_dt.startswith('\\/Date('):
-                                try:
-                                    timestamp_str = payment_dt.split('(')[1].split('+')[0]
-                                    timestamp = int(timestamp_str) / 1000
-                                    payment_dt = datetime.fromtimestamp(timestamp).date()
-                                except (ValueError, IndexError):
-                                    continue
-                            elif hasattr(payment_dt, 'date'):
-                                payment_dt = payment_dt.date()
-                            elif hasattr(payment_dt, 'year') and hasattr(payment_dt, 'month') and hasattr(payment_dt, 'day'):
-                                # Already a date object
-                                pass
-                            else:
-                                continue
+                #             # Handle Xero date format
+                #             if isinstance(payment_dt, str) and payment_dt.startswith('/Date('):
+                #                 try:
+                #                     timestamp_str = payment_dt.split('(')[1].split('+')[0]
+                #                     timestamp = int(timestamp_str) / 1000
+                #                     payment_dt = datetime.fromtimestamp(timestamp).date()
+                #                 except (ValueError, IndexError):
+                #                     continue
+                #             elif isinstance(payment_dt, str) and payment_dt.startswith('\\/Date('):
+                #                 try:
+                #                     timestamp_str = payment_dt.split('(')[1].split('+')[0]
+                #                     timestamp = int(timestamp_str) / 1000
+                #                     payment_dt = datetime.fromtimestamp(timestamp).date()
+                #                 except (ValueError, IndexError):
+                #                     continue
+                #             elif hasattr(payment_dt, 'date'):
+                #                 payment_dt = payment_dt.date()
+                #             elif hasattr(payment_dt, 'year') and hasattr(payment_dt, 'month') and hasattr(payment_dt, 'day'):
+                #                 # Already a date object
+                #                 pass
+                #             else:
+                #                 continue
                             
-                            # Only include payments made before or on report date
-                            if payment_dt <= report_date:
-                                payments_before_report += float(payment_amount)
+                #             # Only include payments made before or on report date
+                #             if payment_dt <= report_date:
+                #                 payments_before_report += float(payment_amount)
                 
                 # Adjust total_amount by subtracting credit notes and payments
                 # Convert to float to avoid Decimal/float type mismatch
-                adjusted_total_amount = float(total_amount) - credit_notes_total - payments_before_report
-                adjusted_amount_due = float(amount_due) - credit_notes_total - payments_before_report
+                # adjusted_total_amount = float(total_amount) - credit_notes_total - payments_before_report
+                # adjusted_amount_due = float(amount_due) - credit_notes_total - payments_before_report
+
+                adjusted_total_amount = float(total_amount)
+                adjusted_amount_due = float(amount_due)
                 
                 should_include = False
                 is_negative = False
@@ -706,7 +709,7 @@ class XeroAgedReceivablesService:
                         if latest_allocation_date is None or allocation_date > latest_allocation_date:
                             latest_allocation_date = allocation_date
                 
-                if latest_allocation_date and latest_allocation_date > report_date:
+                if latest_allocation_date and latest_allocation_date <= report_date:
                     should_include = True
             
             # If no processing date found, include it (for AUTHORISED credit notes)
