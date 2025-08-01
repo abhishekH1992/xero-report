@@ -78,7 +78,29 @@ class XeroAgedReceivablesService:
             }
             
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to fetch report data: {str(e)}")
+            error_message = str(e)
+            
+            # Check if this is an invalid_grant error
+            if "invalid_grant" in error_message.lower():
+                # Handle invalid grant error
+                error_details = self.xero_auth_service.handle_invalid_grant_error(
+                    tenant_id, 
+                    connection.app_id, 
+                    error_message
+                )
+                raise HTTPException(
+                    status_code=401, 
+                    detail={
+                        "error": "invalid_grant",
+                        "message": "Authentication token has expired and needs to be refreshed",
+                        "requires_re_authentication": True,
+                        "re_auth_url": error_details.get("re_auth_url"),
+                        "tenant_id": tenant_id,
+                        "app_id": connection.app_id
+                    }
+                )
+            
+            raise HTTPException(status_code=500, detail=f"Failed to fetch report data: {error_message}")
     
     def _get_unpaid_invoices(self, accounting_api, tenant_id: str, date_for_xero: str, is_future_date: bool) -> List:
         """Fetch unpaid and paid invoices with optimized separate calls"""

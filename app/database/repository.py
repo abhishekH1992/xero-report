@@ -135,6 +135,10 @@ class XeroAuthRepository:
             XeroConnection.is_active == True
         ).all()
     
+    def get_all_connections_any_status(self) -> List[XeroConnection]:
+        """Get all connections regardless of active status"""
+        return self.db.query(XeroConnection).all()
+    
     def update_connection_tokens(self, tenant_id: str, access_token: str, 
                                 refresh_token: str, expires_at: datetime, 
                                 scope: str, app_id: int = 1) -> Optional[XeroConnection]:
