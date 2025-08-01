@@ -315,10 +315,8 @@ async def get_aged_receivables(
                 # For credit notes with remaining credit, use remaining_credit
                 if getattr(cn, 'remaining_credit', 0) > 0:
                     amount_field = "remaining_credit"
-                    print(f"[DEBUG] Using remaining_credit: {getattr(cn, 'remaining_credit', 0)}")
                 else:
                     amount_field = "total"
-                    print(f"[DEBUG] Using total: {getattr(cn, 'total', 0)}")
                 
                 process_financial_item(
                     item=cn,
