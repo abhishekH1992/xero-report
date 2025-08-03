@@ -35,18 +35,26 @@ async def auth_callback(
         tenant_info = await xero_service.get_tenant_info(token_response.access_token, app_id=app_id)
         if tenant_info:
             print(f"Available tenants: {[t.get('tenantName', 'Unknown') for t in tenant_info]}")
+            
+            # Sort tenants by updatedDateUtc (most recent first)
+            tenant_info.sort(key=lambda x: x.get('updatedDateUtc', ''), reverse=True)
+            
+            # Start with the most recently updated tenant
             tenant = tenant_info[0]
+            print(f"Selected most recent tenant: {tenant.get('tenantName')} (updated: {tenant.get('updatedDateUtc')})")
             
             if len(tenant_info) > 1:
                 existing_connections = xero_service.get_all_connections()
                 existing_tenant_ids = {conn.tenant_id for conn in existing_connections}
+                
+                # Try to find a tenant that's not already connected
                 for t in tenant_info:
                     if t.get('tenantId') not in existing_tenant_ids:
                         tenant = t
                         print(f"Selected new tenant: {tenant.get('tenantName')}")
                         break
                 else:
-                    print(f"All tenants already connected, using first: {tenant.get('tenantName')}")
+                    print(f"All tenants already connected, using most recent: {tenant.get('tenantName')}")
 
             connection = xero_service.save_connection(
                 tenant_id=tenant['tenantId'],
@@ -117,17 +125,27 @@ async def auth_callback_html(
         tenant_info = await xero_service.get_tenant_info(token_response.access_token, app_id=app_id)
         if tenant_info:
             print(f"Available tenants: {[t.get('tenantName', 'Unknown') for t in tenant_info]}")
+            
+            # Sort tenants by updatedDateUtc (most recent first)
+            tenant_info.sort(key=lambda x: x.get('updatedDateUtc', ''), reverse=True)
+            
+            # Start with the most recently updated tenant
             tenant = tenant_info[0]
+            print(f"Selected most recent tenant: {tenant.get('tenantName')} (updated: {tenant.get('updatedDateUtc')})")
+            
             if len(tenant_info) > 1:
                 existing_connections = xero_service.get_all_connections()
                 existing_tenant_ids = {conn.tenant_id for conn in existing_connections}
+                
+                # Try to find a tenant that's not already connected
                 for t in tenant_info:
                     if t.get('tenantId') not in existing_tenant_ids:
                         tenant = t
                         print(f"Selected new tenant: {tenant.get('tenantName')}")
                         break
                 else:
-                    print(f"All tenants already connected, using first: {tenant.get('tenantName')}")
+                    print(f"All tenants already connected, using most recent: {tenant.get('tenantName')}")
+
             connection = xero_service.save_connection(
                 tenant_id=tenant['tenantId'],
                 tenant_name=tenant['tenantName'],

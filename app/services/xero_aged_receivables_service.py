@@ -92,18 +92,17 @@ class XeroAgedReceivablesService:
             # Check if this is an invalid_grant error
             if "invalid_grant" in error_message.lower():
                 # Handle invalid grant error
-                error_details = self.xero_auth_service.handle_invalid_grant_error(
-                    tenant_id, 
-                    connection.app_id, 
-                    error_message
-                )
+                # error_details = self.xero_auth_service.handle_invalid_grant_error(
+                #     tenant_id, 
+                #     connection.app_id, 
+                #     error_message
+                # )
                 raise HTTPException(
                     status_code=401, 
                     detail={
                         "error": "invalid_grant",
                         "message": "Authentication token has expired and needs to be refreshed",
                         "requires_re_authentication": True,
-                        "re_auth_url": error_details.get("re_auth_url"),
                         "tenant_id": tenant_id,
                         "app_id": connection.app_id
                     }
@@ -629,6 +628,10 @@ class XeroAgedReceivablesService:
             report_date = datetime(year, month, day).date()
         except Exception as e:
             report_date = datetime.now().date()
+
+        page = 1
+        page_size = 1000
+        all_credit_notes = []
         
         credit_where_clauses = []
         credit_where_clauses.append(f'Type == "ACCRECCREDIT"')
@@ -636,19 +639,34 @@ class XeroAgedReceivablesService:
         credit_where_clauses.append(f'(Status == "PAID" OR Status == "AUTHORISED")')
         credit_where_clause = " && ".join(credit_where_clauses)
         
-        credit_notes_response = accounting_api.get_credit_notes(
-            tenant_id,
-            empty,  # if_modified_since
-            credit_where_clause,
-            'Date DESC',  # order
-            empty,  # ids
-            empty,  # contact_ids
-            empty,  # statuses
-        )
+        while True:
+            try:
+                credit_notes_response = accounting_api.get_credit_notes(
+                    tenant_id,
+                    empty,  # if_modified_since
+                    credit_where_clause,
+                    'Date DESC',  # order
+                    page,   # page
+                    empty,  # unitdp
+                    page_size  # page_size
+                )
+            
+                if not credit_notes_response.credit_notes:
+                    break
+                
+                all_credit_notes.extend(credit_notes_response.credit_notes)
+                
+                if len(credit_notes_response.credit_notes) < page_size:
+                    break
+
+                page += 1
+
+            except Exception as e:
+                break
         
         # Filter credit notes based on processing date logic
         filtered_credit_notes = []
-        for credit_note in (credit_notes_response.credit_notes or []):
+        for credit_note in (all_credit_notes or []):
             should_include = False
             
             # Check if credit note was processed after report date

@@ -182,8 +182,13 @@ class XeroAuthRepository:
         Returns:
             XeroConnection: The upserted connection
         """
-        # Check if connection exists for this tenant and app
-        existing_connection = self.get_connection_by_tenant_and_app(tenant_id, app_id)
+        # Check if connection exists for this tenant and app (regardless of active status)
+        existing_connection = self.db.query(XeroConnection).filter(
+            and_(
+                XeroConnection.tenant_id == tenant_id,
+                XeroConnection.app_id == app_id
+            )
+        ).first()
         
         if existing_connection:
             old_token_hash = hashlib.sha256(existing_connection.access_token.encode()).hexdigest()

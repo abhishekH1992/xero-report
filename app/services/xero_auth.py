@@ -324,6 +324,8 @@ class XeroAuthService:
                 )
                 
                 response_time_ms = int((time.time() - start_time) * 1000)
+
+                print(f"🔍 Response: {response.json()}")
                 
                 # Get connection ID for logging
                 connection_id = None
