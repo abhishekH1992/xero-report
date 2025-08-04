@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+import pandas as pd
 
 from xero_python.accounting.api.accounting_api import empty
 
@@ -30,7 +31,9 @@ async def get_aged_receivables(
     show_current: bool = Query(True, description="Show Current bucket separately (if false, combines Current and < 1 Month)"),
     aged_receivables_service: XeroAgedReceivablesService = Depends(get_aged_receivables_service),
     xero_auth_service: XeroAuthService = Depends(get_xero_auth_service),
-    connection_id: str = Query(None, description="Connection ID(s) - comma-separated for multiple connections")
+    connection_id: str = Query(None, description="Connection ID(s) - comma-separated for multiple connections"),
+    is_response_only: int = Query(1, description="If 1, return response only without Excel generation"),
+    format: int = Query(1, description="If 1, return table format; if 0, return JSON format")
 ):
     """
     Custom Aged Receivables report: fetch all unpaid invoices from all connections, 
@@ -401,118 +404,183 @@ async def get_aged_receivables(
             # Continue with other connections even if one fails
             continue
 
-    # Prepare data for Excel export
+    # Prepare data for Excel export (only if is_response_only is 0)
     excel_data = []
-    for key, data in all_report_data.items():
-        # Calculate total amount first
-        total_amount = 0
-        for bucket_name in bucket_names:
-            amount = data.get(bucket_name, 0)
-            total_amount += amount
-        contact_name = data.get("contact", "Unknown")
-        row = {
-            "Business Unit": data.get("business_unit", "Unknown"),
-            "Company": data.get("company", "Unknown"),
-            "Contact": contact_name
-        }
+    if is_response_only == 0:
+        for key, data in all_report_data.items():
+            # Calculate total amount first
+            total_amount = 0
+            for bucket_name in bucket_names:
+                amount = data.get(bucket_name, 0)
+                total_amount += amount
+            contact_name = data.get("contact", "Unknown")
+            row = {
+                "Business Unit": data.get("business_unit", "Unknown"),
+                "Company": data.get("company", "Unknown"),
+                "Contact": contact_name
+            }
+            
+            # Add bucket amounts to row
+            for bucket_name in bucket_names:
+                amount = data.get(bucket_name, 0)
+                if bucket_name == "Current" and not show_current:
+                    # When show_current=False, combine Current and < 1 Month amounts
+                    current_amount = data.get("Current", 0)
+                    less_than_one_amount = data.get("< 1 Month", 0)
+                    row["Current"] = current_amount + less_than_one_amount
+                elif bucket_name == "< 1 Month" and not show_current:
+                    # Skip the < 1 Month column when show_current=False since it's combined with Current
+                    continue
+                else:
+                    row[bucket_name] = amount
+            
+            row["Total"] = total_amount
+            row["Comments"] = ""  # Add blank comments column
+            # Generate system comments
+            invoice_details = data.get("invoice_details", {})
+            # When show_current=False, we need to combine Current and < 1 Month comments
+            if not show_current:
+                # Create a copy of invoice_details to avoid modifying the original
+                combined_invoice_details = invoice_details.copy()
+                if "Current" in combined_invoice_details and "< 1 Month" in combined_invoice_details:
+                    # Combine the invoice details from both buckets
+                    combined_invoice_details["Current"] = combined_invoice_details.get("Current", []) + combined_invoice_details.get("< 1 Month", [])
+                    # Remove the < 1 Month entry since it's now combined
+                    if "< 1 Month" in combined_invoice_details:
+                        del combined_invoice_details["< 1 Month"]
+                # Create a modified bucket_names list for system comments
+                system_bucket_names = []
+                for bucket in bucket_names:
+                    if bucket == "Current":
+                        system_bucket_names.append("Current & < 1 Month")
+                    elif bucket == "< 1 Month":
+                        continue  # Skip this bucket in system comments
+                    else:
+                        system_bucket_names.append(bucket)
+                system_comments = generate_system_comments(combined_invoice_details, system_bucket_names)
+            else:
+                system_comments = generate_system_comments(invoice_details, bucket_names)
+            row["System Comments"] = system_comments
+            # Only include rows that have non-zero amounts
+            if total_amount != 0:
+                excel_data.append(row)
+
+    # Handle table format conversion if requested
+    if format == 1:
+        # Convert to pandas DataFrame for table format
+        table_data = []
+        for key, data in all_report_data.items():
+            # Calculate total amount first
+            total_amount = 0
+            for bucket_name in bucket_names:
+                amount = data.get(bucket_name, 0)
+                total_amount += amount
+            
+            # Only include rows that have non-zero amounts
+            if total_amount != 0:
+                row = {
+                    "Business Unit": data.get("business_unit", "Unknown"),
+                    "Company": data.get("company", "Unknown"),
+                    "Contact": data.get("contact", "Unknown")
+                }
+                # Add aging buckets
+                for bucket_name in bucket_names:
+                    amount = data.get(bucket_name, 0)
+                    row[bucket_name] = amount
+                row["Total"] = total_amount
+                
+                # Generate system comments
+                invoice_details = data.get("invoice_details", {})
+                system_comments = generate_system_comments(invoice_details, bucket_names)
+                row["System Comments"] = system_comments
+                
+                table_data.append(row)
         
-        # Add bucket amounts to row
-        for bucket_name in bucket_names:
-            amount = data.get(bucket_name, 0)
-            if bucket_name == "Current" and not show_current:
-                # When show_current=False, combine Current and < 1 Month amounts
-                current_amount = data.get("Current", 0)
-                less_than_one_amount = data.get("< 1 Month", 0)
-                row["Current"] = current_amount + less_than_one_amount
-            elif bucket_name == "< 1 Month" and not show_current:
+        # Create pandas DataFrame
+        df = pd.DataFrame(table_data)
+        
+        # Prepare response with table data
+        response_data = {
+            "format": "table",
+            "data": df.to_dict(orient="records"),
+            "columns": df.columns.tolist(),
+            "shape": df.shape,
+            "generated_at": report_date_obj.isoformat(),
+            "total_invoices": total_invoices,
+            "aging_config": {
+                "periods": periods,
+                "period_of": period_of,
+                "period_type": period_type,
+                "bucket_names": bucket_names
+            },
+            "app_filter": app_id,
+            "failed_connections": failed_connections,
+            "connection_summary": {
+                "total_connections_attempted": len(connections) + len(failed_connections),
+                "successful_connections": len(connections),
+                "failed_connections_count": len(failed_connections),
+                "success_rate": f"{(len(connections) / (len(connections) + len(failed_connections)) * 100):.1f}%" if (len(connections) + len(failed_connections)) > 0 else "0%"
+            }
+        }
+    else:
+        # Return original JSON format
+        response_data = {
+            "aged_receivables": all_report_data, 
+            "generated_at": report_date_obj.isoformat(),
+            "total_invoices": total_invoices,
+            "aging_config": {
+                "periods": periods,
+                "period_of": period_of,
+                "period_type": period_type,
+                "bucket_names": bucket_names
+            },
+            "app_filter": app_id,
+            "failed_connections": failed_connections,
+            "connection_summary": {
+                "total_connections_attempted": len(connections) + len(failed_connections),
+                "successful_connections": len(connections),
+                "failed_connections_count": len(failed_connections),
+                "success_rate": f"{(len(connections) / (len(connections) + len(failed_connections)) * 100):.1f}%" if (len(connections) + len(failed_connections)) > 0 else "0%"
+            }
+        }
+    
+    # Generate Excel file only if is_response_only is 0
+    if is_response_only == 0:
+        # Define columns for Excel export
+        excel_columns = []
+        for bucket in bucket_names:
+            if bucket == "Current" and not show_current:
+                # Combine Current and < 1 Month in Excel header
+                excel_columns.append({"header": "Current & < 1 Month", "key": bucket, "width": 15, "format": "currency"})
+            elif bucket == "< 1 Month" and not show_current:
                 # Skip the < 1 Month column when show_current=False since it's combined with Current
                 continue
             else:
-                row[bucket_name] = amount
+                excel_columns.append({"header": bucket, "key": bucket, "width": 15, "format": "currency"})
         
-        row["Total"] = total_amount
-        row["Comments"] = ""  # Add blank comments column
-        # Generate system comments
-        invoice_details = data.get("invoice_details", {})
-        # When show_current=False, we need to combine Current and < 1 Month comments
-        if not show_current:
-            # Create a copy of invoice_details to avoid modifying the original
-            combined_invoice_details = invoice_details.copy()
-            if "Current" in combined_invoice_details and "< 1 Month" in combined_invoice_details:
-                # Combine the invoice details from both buckets
-                combined_invoice_details["Current"] = combined_invoice_details.get("Current", []) + combined_invoice_details.get("< 1 Month", [])
-                # Remove the < 1 Month entry since it's now combined
-                if "< 1 Month" in combined_invoice_details:
-                    del combined_invoice_details["< 1 Month"]
-            # Create a modified bucket_names list for system comments
-            system_bucket_names = []
-            for bucket in bucket_names:
-                if bucket == "Current":
-                    system_bucket_names.append("Current & < 1 Month")
-                elif bucket == "< 1 Month":
-                    continue  # Skip this bucket in system comments
-                else:
-                    system_bucket_names.append(bucket)
-            system_comments = generate_system_comments(combined_invoice_details, system_bucket_names)
-        else:
-            system_comments = generate_system_comments(invoice_details, bucket_names)
-        row["System Comments"] = system_comments
-        # Only include rows that have non-zero amounts
-        if total_amount != 0:
-            excel_data.append(row)
-
-    # Define columns for Excel export
-    excel_columns = []
-    for bucket in bucket_names:
-        if bucket == "Current" and not show_current:
-            # Combine Current and < 1 Month in Excel header
-            excel_columns.append({"header": "Current & < 1 Month", "key": bucket, "width": 15, "format": "currency"})
-        elif bucket == "< 1 Month" and not show_current:
-            # Skip the < 1 Month column when show_current=False since it's combined with Current
-            continue
-        else:
-            excel_columns.append({"header": bucket, "key": bucket, "width": 15, "format": "currency"})
+        columns = [
+            {"header": "Business Unit", "key": "Business Unit", "width": 20, "format": "text"},
+            {"header": "Company", "key": "Company", "width": 25, "format": "text"},
+            {"header": "Contact", "key": "Contact", "width": 30, "format": "text"},
+            *excel_columns,
+            {"header": "Total", "key": "Total", "width": 15, "format": "currency"},
+            {"header": "Comments", "key": "Comments", "width": 25, "format": "text"},
+            {"header": "System Comments", "key": "System Comments", "width": 60, "format": "text"}
+        ]
+        
+        # Export to Excel
+        excel_file_path = export_report_to_excel(
+            data=excel_data,
+            columns=columns,
+            filename="aged_receivables_report",
+            sheet_name="Aged Receivables",
+            title="Aged Receivables Summary",
+            report_date=f"As at {report_date_obj.strftime('%d %B %Y')}",
+            output_dir="tmp",
+            include_totals=True,
+            include_percentages=True
+        )
+        
+        response_data["excel_file"] = excel_file_path
     
-    columns = [
-        {"header": "Business Unit", "key": "Business Unit", "width": 20, "format": "text"},
-        {"header": "Company", "key": "Company", "width": 25, "format": "text"},
-        {"header": "Contact", "key": "Contact", "width": 30, "format": "text"},
-        *excel_columns,
-        {"header": "Total", "key": "Total", "width": 15, "format": "currency"},
-        {"header": "Comments", "key": "Comments", "width": 25, "format": "text"},
-        {"header": "System Comments", "key": "System Comments", "width": 60, "format": "text"}
-    ]
-    
-    # Export to Excel
-    excel_file_path = export_report_to_excel(
-        data=excel_data,
-        columns=columns,
-        filename="aged_receivables_report",
-        sheet_name="Aged Receivables",
-        title="Aged Receivables Summary",
-        report_date=f"As at {report_date_obj.strftime('%d %B %Y')}",
-        output_dir="tmp",
-        include_totals=True,
-        include_percentages=True
-    )
-    
-    return {
-        "aged_receivables": all_report_data, 
-        "generated_at": report_date_obj.isoformat(),
-        "total_invoices": total_invoices,
-        "aging_config": {
-            "periods": periods,
-            "period_of": period_of,
-            "period_type": period_type,
-            "bucket_names": bucket_names
-        },
-        "excel_file": excel_file_path,
-        "app_filter": app_id,
-        "failed_connections": failed_connections,
-        "connection_summary": {
-            "total_connections_attempted": len(connections) + len(failed_connections),
-            "successful_connections": len(connections),
-            "failed_connections_count": len(failed_connections),
-            "success_rate": f"{(len(connections) / (len(connections) + len(failed_connections)) * 100):.1f}%" if (len(connections) + len(failed_connections)) > 0 else "0%"
-        }
-    }
+    return response_data
