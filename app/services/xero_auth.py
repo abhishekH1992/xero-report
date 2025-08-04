@@ -413,6 +413,10 @@ class XeroAuthService:
             return self.db_repo.get_connection_by_tenant_and_app(tenant_id, app_id)
         return self.db_repo.get_connection(tenant_id)
     
+    def get_connection_by_id(self, connection_id: int) -> Optional[DBXeroConnection]:
+        """Get connection by database ID"""
+        return self.db_repo.get_connection_by_id(connection_id)
+    
     def get_all_connections(self) -> list[DBXeroConnection]:
         """Get all active connections"""
         return self.db_repo.get_all_connections()

@@ -129,6 +129,12 @@ class XeroAuthRepository:
             XeroConnection.tenant_id == tenant_id
         ).first()
     
+    def get_connection_by_id(self, connection_id: int) -> Optional[XeroConnection]:
+        """Get connection by database ID"""
+        return self.db.query(XeroConnection).filter(
+            XeroConnection.id == connection_id
+        ).first()
+    
     def get_all_connections(self) -> List[XeroConnection]:
         """Get all active connections"""
         return self.db.query(XeroConnection).filter(

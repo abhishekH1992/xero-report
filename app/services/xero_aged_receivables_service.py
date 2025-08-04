@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from fastapi import HTTPException
 
@@ -6,6 +6,7 @@ from xero_python.accounting.api.accounting_api import empty
 
 from app.services.xero_auth import XeroAuthService
 from app.util.xero_connection import create_xero_api_client
+from app.util.token_manager import TokenManager
 
 
 class XeroAgedReceivablesService:
@@ -13,6 +14,7 @@ class XeroAgedReceivablesService:
     
     def __init__(self, xero_auth_service: XeroAuthService):
         self.xero_auth_service = xero_auth_service
+        self.token_manager = TokenManager(xero_auth_service)
     
     def _safe_float(self, value, default=0.0):
         """Safely convert any numeric value to float"""
@@ -23,7 +25,9 @@ class XeroAgedReceivablesService:
         except (ValueError, TypeError):
             return default
     
-    def get_aged_receivables_data(
+
+    
+    async def get_aged_receivables_data(
         self, 
         tenant_id: str, 
         report_date,
@@ -52,7 +56,10 @@ class XeroAgedReceivablesService:
         if not connection:
             raise HTTPException(status_code=404, detail="Connection not found")
 
-        # Create Xero API client with automatic token refresh
+        # Ensure we have a valid token before making API calls
+        connection = await self.token_manager.ensure_valid_token(connection, tenant_id, app_id)
+
+        # Create Xero API client with manual token management
         accounting_api = create_xero_api_client(connection, tenant_id, self.xero_auth_service)
 
         try:

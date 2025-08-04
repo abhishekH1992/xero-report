@@ -58,7 +58,9 @@ async def get_aged_receivables(
         connection_ids = [cid.strip() for cid in connection_id.split(',')]
         for cid in connection_ids:
             try:
-                connection = xero_auth_service.get_connection(cid)
+                # Try to parse as integer for connection ID
+                connection_id = int(cid)
+                connection = xero_auth_service.get_connection_by_id(connection_id)
                 if connection:
                     connections.append(connection)
                 else:
@@ -70,6 +72,30 @@ async def get_aged_receivables(
                         "app_id": None,
                         "error": "Connection not found",
                         "error_details": f"Connection with ID {cid} was not found in the database"
+                    })
+            except ValueError:
+                # If not an integer, try as tenant_id
+                try:
+                    connection = xero_auth_service.get_connection(cid)
+                    if connection:
+                        connections.append(connection)
+                    else:
+                        failed_connections.append({
+                            "connection_id": cid,
+                            "tenant_id": None,
+                            "tenant_name": "Unknown",
+                            "app_id": None,
+                            "error": "Connection not found",
+                            "error_details": f"Connection with ID {cid} was not found in the database"
+                        })
+                except Exception as e:
+                    failed_connections.append({
+                        "connection_id": cid,
+                        "tenant_id": None,
+                        "tenant_name": "Unknown",
+                        "app_id": None,
+                        "error": str(e),
+                        "error_details": f"Failed to retrieve connection {cid}: {str(e)}"
                     })
             except Exception as e:
                 # Log error but continue with other connections
@@ -101,7 +127,7 @@ async def get_aged_receivables(
     for connection in connections:
         try:
             # Fetch data for this connection with app_id support
-            data = aged_receivables_service.get_aged_receivables_data(
+            data = await aged_receivables_service.get_aged_receivables_data(
                 tenant_id=str(connection.tenant_id),
                 report_date=report_date_obj,
                 periods=periods,

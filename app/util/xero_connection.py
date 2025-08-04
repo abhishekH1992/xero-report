@@ -3,15 +3,15 @@ from xero_python.api_client import ApiClient
 from xero_python.api_client.configuration import Configuration
 from xero_python.api_client.oauth2 import OAuth2Token
 from datetime import datetime, timezone
+import logging
 
-from app.util.xero_token import register_xero_token_handlers
 from app.services.xero_auth import XeroAuthService
 from app.database.models import XeroConnection
 
 
 def create_xero_api_client(connection: XeroConnection, tenant_id: str, xero_service: XeroAuthService) -> AccountingApi:
     """
-    Create a configured Xero API client with automatic token refresh.
+    Create a configured Xero API client with manual token management.
     
     Args:
         connection: The Xero connection from database
@@ -39,7 +39,7 @@ def create_xero_api_client(connection: XeroConnection, tenant_id: str, xero_serv
         pool_threads=1,
     )
 
-    # Prepare token dictionary for the SDK
+    # Prepare token dictionary for the SDK (without automatic refresh handlers)
     token_dict = {
         "access_token": connection.access_token,
         "refresh_token": connection.refresh_token,
@@ -49,8 +49,20 @@ def create_xero_api_client(connection: XeroConnection, tenant_id: str, xero_serv
         "token_type": "Bearer"
     }
 
-    # Register handlers for automatic refresh first, then set the token
-    register_xero_token_handlers(api_client, token_dict, tenant_id, xero_service, connection.app_id)
+    # Register minimal token handlers (no automatic refresh, just for SDK compatibility)
+    @api_client.oauth2_token_getter
+    def obtain_xero_oauth2_token():
+        return token_dict
+
+    @api_client.oauth2_token_saver
+    def store_xero_oauth2_token(new_token):
+        # Minimal token saver - just log that SDK tried to save a token
+        # This prevents the SDK from throwing OAuth2TokenSaverError
+        logger = logging.getLogger(__name__)
+        logger.debug(f"SDK attempted to save token for tenant {tenant_id}, app {connection.app_id}")
+        # We don't actually save the token since we handle refresh manually
+
+    # Set the token with minimal handlers
     api_client.set_oauth2_token(token_dict)
 
     # Create and return Accounting API instance
