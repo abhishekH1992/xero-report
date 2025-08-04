@@ -19,6 +19,7 @@ class XeroCashFlowService:
     
     def __init__(self, xero_auth_service: XeroAuthService):
         self.xero_auth_service = xero_auth_service
+        self.token_manager = TokenManager(xero_auth_service)
     
     @classmethod
     def get_service_dependency(cls):
@@ -31,7 +32,7 @@ class XeroCashFlowService:
         
         return _get_service
     
-    def get_cashflow_data(
+    async def get_cashflow_data(
         self,
         report_date: str,
         period: int = 2,
@@ -67,7 +68,7 @@ class XeroCashFlowService:
         # Process each connection
         for connection in connections:
             try:
-                connection_data = self._process_connection(
+                connection_data = await self._process_connection(
                     connection, date_ranges, report_date
                 )
                 cashflow_data[connection.tenant_name] = connection_data

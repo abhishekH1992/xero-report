@@ -671,7 +671,7 @@ async def get_cashflow_report(
     
     try:
         # Get cashflow data
-        cashflow_data = cashflow_service.get_cashflow_data(
+        cashflow_data = await cashflow_service.get_cashflow_data(
             report_date=report_date_str,
             period=period,
             period_of=period_of,
