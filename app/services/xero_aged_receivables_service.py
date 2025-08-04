@@ -761,7 +761,7 @@ class XeroAgedReceivablesService:
         """Fetch overpayments with remaining credit for the period"""
         all_overpayments = []
         page = 1
-        page_size = 100
+        page_size = 1000
         
         while True:
             overpayment_clause = []
@@ -775,10 +775,8 @@ class XeroAgedReceivablesService:
                 empty,  # if_modified_since
                 overpayment_clause,
                 'Date DESC',  # order
-                empty,  # ids
-                empty,  # contact_ids
-                empty,  # statuses,
                 page,   # page
+                empty,  # unitdp
                 page_size  # page_size
             )
             
