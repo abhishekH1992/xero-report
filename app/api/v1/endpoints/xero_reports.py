@@ -398,6 +398,9 @@ async def get_aged_receivables(
                 current_amount = data.get("Current", 0)
                 less_than_one_amount = data.get("< 1 Month", 0)
                 row["Current"] = current_amount + less_than_one_amount
+            elif bucket_name == "< 1 Month" and not show_current:
+                # Skip the < 1 Month column when show_current=False since it's combined with Current
+                continue
             else:
                 row[bucket_name] = amount
         
@@ -405,7 +408,28 @@ async def get_aged_receivables(
         row["Comments"] = ""  # Add blank comments column
         # Generate system comments
         invoice_details = data.get("invoice_details", {})
-        system_comments = generate_system_comments(invoice_details, bucket_names)
+        # When show_current=False, we need to combine Current and < 1 Month comments
+        if not show_current:
+            # Create a copy of invoice_details to avoid modifying the original
+            combined_invoice_details = invoice_details.copy()
+            if "Current" in combined_invoice_details and "< 1 Month" in combined_invoice_details:
+                # Combine the invoice details from both buckets
+                combined_invoice_details["Current"] = combined_invoice_details.get("Current", []) + combined_invoice_details.get("< 1 Month", [])
+                # Remove the < 1 Month entry since it's now combined
+                if "< 1 Month" in combined_invoice_details:
+                    del combined_invoice_details["< 1 Month"]
+            # Create a modified bucket_names list for system comments
+            system_bucket_names = []
+            for bucket in bucket_names:
+                if bucket == "Current":
+                    system_bucket_names.append("Current & < 1 Month")
+                elif bucket == "< 1 Month":
+                    continue  # Skip this bucket in system comments
+                else:
+                    system_bucket_names.append(bucket)
+            system_comments = generate_system_comments(combined_invoice_details, system_bucket_names)
+        else:
+            system_comments = generate_system_comments(invoice_details, bucket_names)
         row["System Comments"] = system_comments
         # Only include rows that have non-zero amounts
         if total_amount != 0:
@@ -417,6 +441,9 @@ async def get_aged_receivables(
         if bucket == "Current" and not show_current:
             # Combine Current and < 1 Month in Excel header
             excel_columns.append({"header": "Current & < 1 Month", "key": bucket, "width": 15, "format": "currency"})
+        elif bucket == "< 1 Month" and not show_current:
+            # Skip the < 1 Month column when show_current=False since it's combined with Current
+            continue
         else:
             excel_columns.append({"header": bucket, "key": bucket, "width": 15, "format": "currency"})
     
