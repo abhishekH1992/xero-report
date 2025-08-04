@@ -671,12 +671,16 @@ async def get_cashflow_report(
     
     try:
         # Get cashflow data
-        cashflow_data = await cashflow_service.get_cashflow_data(
+        result = await cashflow_service.get_cashflow_data(
             report_date=report_date_str,
             period=period,
             period_of=period_of,
             connection_id=connection_id
         )
+        
+        # Extract data and errors from result
+        cashflow_data = result.get("data", {})
+        errors = result.get("errors", [])
         
         # Calculate date ranges for export
         from app.util.report_helper import calculate_date_ranges
@@ -694,7 +698,8 @@ async def get_cashflow_report(
         json_response = generate_cashflow_json_response(
             cashflow_data=cashflow_data,
             date_ranges=date_ranges,
-            excel_file_path=excel_file_path
+            excel_file_path=excel_file_path,
+            errors=errors
         )
         
         return json_response

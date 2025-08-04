@@ -64,6 +64,7 @@ class XeroCashFlowService:
             raise ValueError("No active Xero connections found")
         
         cashflow_data = {}
+        errors = []
         
         # Process each connection
         for connection in connections:
@@ -73,11 +74,20 @@ class XeroCashFlowService:
                 )
                 cashflow_data[connection.tenant_name] = connection_data
             except Exception as e:
-                print(f"[CASHFLOW] Error processing connection {connection.tenant_name}: {str(e)}")
+                error_msg = f"Error processing connection {connection.tenant_name}: {str(e)}"
+                print(f"[CASHFLOW] {error_msg}")
+                errors.append({
+                    "connection_name": connection.tenant_name,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                })
                 # Continue with other connections even if one fails
                 continue
         
-        return cashflow_data
+        return {
+            "data": cashflow_data,
+            "errors": errors
+        }
     
     async def _process_connection(
         self, 
@@ -119,7 +129,7 @@ class XeroCashFlowService:
                     # Check if this account is ASB or ANZ by getting account details
                     account_details = self._get_account_details(accounting_api, str(connection.tenant_id), account_id)
                     
-                    if account_details and self._is_asb_or_anz_account(account_details):
+                    if account_details and self._is_supported_bank_account(account_details):
                         # Add period data to existing account or create new one
                         self._add_period_data_to_connection(connection_data, account_details, account_data, start_date, end_date)
                         
@@ -202,7 +212,7 @@ class XeroCashFlowService:
                                         if account_id:
                                             try:
                                                 account_details = self._get_account_details(accounting_api, tenant_id, account_id)
-                                                if self._is_asb_or_anz_account(account_details):
+                                                if self._is_supported_bank_account(account_details):
                                                     bank_data[account_id] = {
                                                         'account_name': account_name,
                                                         'bank_name': getattr(account_details, 'bank_name', ''),
@@ -278,15 +288,24 @@ class XeroCashFlowService:
             print(f"[CASHFLOW] Error getting account details for {account_id}: {str(e)}")
             return None
     
-    def _is_asb_or_anz_account(self, account: Any) -> bool:
+    def _is_supported_bank_account(self, account: Any) -> bool:
         """
-        Check if account is ASB or ANZ based on account number.
+        Check if account is ASB, ANZ, BNZ, ICBC, CCB/BOC, Kiwi Bank, or Hua Xia Bank.
+        
+        Supported banks:
+        - ASB: account numbers starting with 12
+        - ANZ: account numbers starting with 01 or 06
+        - BNZ: account numbers starting with 02
+        - ICBC: account numbers starting with 10
+        - CCB/BOC: account numbers starting with 88
+        - Kiwi Bank: account numbers starting with 38
+        - Hua Xia Bank: account numbers starting with 17
         
         Args:
             account: Account object
         
         Returns:
-            True if ASB or ANZ account, False otherwise
+            True if supported bank account, False otherwise
         """
         account_number = getattr(account, 'bank_account_number', '')
         
@@ -298,6 +317,27 @@ class XeroCashFlowService:
         elif account_number.startswith('01') or account_number.startswith('06'):
             setattr(account, 'bank_name', 'ANZ')
             return True
+        # BNZ bank: account number starts with 02
+        elif account_number.startswith('02'):
+            setattr(account, 'bank_name', 'BNZ')
+            return True
+        # ICBC bank: account number starts with 10
+        elif account_number.startswith('10'):
+            setattr(account, 'bank_name', 'ICBC')
+            return True
+        # Hua Xia Bank: account number starts with 17
+        elif account_number.startswith('17'):
+            setattr(account, 'bank_name', 'Hua Xia Bank')
+            return True
+        # CCB/BOC bank: account number starts with 88
+        elif account_number.startswith('88'):
+            setattr(account, 'bank_name', 'CCB / BOC')
+            return True
+        # Kiwi Bank: account number starts with 38
+        elif account_number.startswith('38'):
+            setattr(account, 'bank_name', 'Kiwi Bank')
+            return True
+
         
         return False
     
