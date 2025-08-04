@@ -1,9 +1,7 @@
+from typing import List, Tuple, Any
 from datetime import datetime, timedelta
-from typing import List, Tuple, Dict, Any
-import calendar
 
-
-def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, period_type: str) -> str:
+def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, period_type: str, show_current: bool = True) -> str:
     """
     Calculate aging bucket based on configurable periods.
     
@@ -17,7 +15,7 @@ def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, 
     days = (report_date - due_date).days
     
     if days < 0:
-        return "Current"
+        return "Current"  # Always return Current for JSON response
     
     # For month-based periods, use actual calendar months
     if period_type.lower() == "month":
@@ -26,16 +24,21 @@ def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, 
         if report_date.day < due_date.day:
             months_diff -= 1
         
-        # Calculate which period this falls into
+        # Calculate which period this falls into using the periods parameter
         if months_diff <= 0:
             return f"< 1 {period_type}"  # Current invoices go to < 1 Month
-        elif months_diff <= 1:
+        elif months_diff == 1:
             return f"1 {period_type}"
-        elif months_diff <= 2:
-            return f"2 {period_type}s"
-        elif months_diff <= 3:
-            return f"3 {period_type}s"
         else:
+            # For periods > 1, check each period dynamically
+            # The bucket names are: < 1 Month, 1 Month, 2 Months, 3 Months, etc.
+            # But the generate_bucket_names function creates buckets up to periods-1
+            # So for periods=4, we have: Current, < 1 Month, 1 Month, 2 Months, 3 Months, Older
+            # For periods=3, we have: Current, < 1 Month, 1 Month, 2 Months, Older
+            for i in range(2, periods):  # Changed from periods+1 to periods
+                if months_diff == i:
+                    return f"{i} {period_type}{'s' if i > 1 else ''}"
+            
             return "Older"
     else:
         # Calculate days per period based on type
@@ -57,18 +60,19 @@ def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, 
         return "Older"
 
 
-def generate_bucket_names(periods: int, period_type: str) -> list:
+def generate_bucket_names(periods: int, period_type: str, show_current: bool = True) -> list:
     """
     Generate bucket names based on configurable periods.
     
     Args:
         periods: Number of aging periods
         period_type: Type of period (Day, Week, Month)
+        show_current: Whether to show Current bucket (always True for JSON, used for Excel headings)
     
     Returns:
         List of bucket names including Current, period buckets, and Older
     """
-    # Generate bucket names based on configurable periods
+    # Always generate separate Current and < 1 Month buckets for JSON response
     bucket_names = ["Current"]
     for i in range(1, periods + 1):
         if i == 1:
@@ -82,7 +86,7 @@ def generate_bucket_names(periods: int, period_type: str) -> list:
 
 def process_financial_item(item, report_date, periods, period_of, period_type, bucket_names, report, 
                          amount_field, date_field, is_negative=False, date_fallback=None, 
-                         connection_name=None, business_type=None, item_type="invoice"):
+                         connection_name=None, business_type=None, item_type="invoice", show_current=True):
     """
     Process a financial item (invoice, credit note, bank transaction) and categorize it into aging buckets.
     
@@ -151,7 +155,7 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
         item_date = date_fallback or report_date
     
     # Calculate aging bucket
-    bucket = calculate_aging_bucket(report_date, item_date, periods, period_of, period_type)
+    bucket = calculate_aging_bucket(report_date, item_date, periods, period_of, period_type, show_current)
     # Create a unique key that includes business unit and company
     if connection_name and business_type:
         key = f"{business_type}|{connection_name}|{contact_name}"

@@ -4,6 +4,16 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+    print("✅ .env file loaded successfully")
+except ImportError:
+    print("⚠️ python-dotenv not installed, using system environment variables")
+except Exception as e:
+    print(f"⚠️ Error loading .env file: {e}")
+
 from app.api.v1.endpoints import router as v1_router
 from app.config import settings
 from app.database.database import init_db
@@ -44,8 +54,12 @@ async def startup_event():
 async def debug_config():
     """Debug endpoint to check environment variables"""
     return {
-        "client_id": settings.xero_client_id[:10] + "..." if settings.xero_client_id else "NOT_SET",
-        "client_secret": "SET" if settings.xero_client_secret else "NOT_SET",
+        "app1_client_id": settings.xero_app1_client_id[:10] + "..." if settings.xero_app1_client_id else "NOT_SET",
+        "app1_client_secret": "SET" if settings.xero_app1_client_secret else "NOT_SET",
+        "app2_client_id": settings.xero_app2_client_id[:10] + "..." if settings.xero_app2_client_id else "NOT_SET",
+        "app2_client_secret": "SET" if settings.xero_app2_client_secret else "NOT_SET",
+        "legacy_client_id": settings.xero_client_id[:10] + "..." if settings.xero_client_id else "NOT_SET",
+        "legacy_client_secret": "SET" if settings.xero_client_secret else "NOT_SET",
         "redirect_uri": settings.xero_redirect_uri,
         "auth_url": settings.xero_auth_url,
         "token_url": settings.xero_token_url,

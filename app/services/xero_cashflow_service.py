@@ -3,6 +3,7 @@ from datetime import datetime
 from xero_python.accounting.api.accounting_api import AccountingApi, empty
 from xero_python.finance.api.finance_api import FinanceApi
 from xero_python.api_client import ApiClient
+from app.util.token_manager import TokenManager
 
 from app.util.xero_connection import create_xero_api_client
 from app.util.report_helper import (
@@ -77,7 +78,7 @@ class XeroCashFlowService:
         
         return cashflow_data
     
-    def _process_connection(
+    async def _process_connection(
         self, 
         connection: XeroConnection, 
         date_ranges: List[Tuple[str, str]], 
@@ -94,6 +95,10 @@ class XeroCashFlowService:
         Returns:
             Dictionary containing connection's cashflow data
         """
+
+        # Ensure we have a valid token before making API calls
+        connection = await self.token_manager.ensure_valid_token(connection, connection.tenant_id, connection.app_id)
+
         # Create API client
         accounting_api = create_xero_api_client(connection, str(connection.tenant_id), self.xero_auth_service)
         

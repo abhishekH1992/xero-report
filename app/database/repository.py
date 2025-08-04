@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib
 from typing import Optional, List, Dict, Any
 
@@ -15,13 +15,14 @@ class XeroAuthRepository:
     
     # Auth State Operations
     def create_auth_state(self, state: str, code_verifier: Optional[str] = None, 
-                         expires_in_hours: int = 1) -> XeroAuthState:
-        """Create a new OAuth2 auth state"""
-        expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
+                         expires_in_hours: int = 1, app_id: int = 1) -> XeroAuthState:
+        """Create a new OAuth2 auth state with app_id"""
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=expires_in_hours)
         
         auth_state = XeroAuthState(
             state=state,
             code_verifier=code_verifier,
+            app_id=app_id,
             expires_at=expires_at
         )
         
@@ -35,7 +36,7 @@ class XeroAuthRepository:
         return self.db.query(XeroAuthState).filter(
             and_(
                 XeroAuthState.state == state,
-                XeroAuthState.expires_at > datetime.utcnow()
+                XeroAuthState.expires_at > datetime.now(timezone.utc)
             )
         ).first()
     
@@ -55,7 +56,7 @@ class XeroAuthRepository:
         """Clean up expired auth states and return count of deleted records"""
         expired_states = self.db.query(XeroAuthState).filter(
             or_(
-                XeroAuthState.expires_at <= datetime.utcnow(),
+                XeroAuthState.expires_at <= datetime.now(timezone.utc),
                 XeroAuthState.used == True
             )
         ).all()
@@ -71,8 +72,8 @@ class XeroAuthRepository:
     def create_connection(self, tenant_id: str, tenant_name: str, 
                          access_token: str, refresh_token: str,
                          expires_at: datetime, scope: str, 
-                         business_type: str = "Commercial Properties") -> XeroConnection:
-        """Create a new Xero connection"""
+                         business_type: str = "Commercial Property", app_id: int = 1) -> XeroConnection:
+        """Create a new Xero connection with app_id"""
         connection = XeroConnection(
             tenant_id=tenant_id,
             tenant_name=tenant_name,
@@ -80,7 +81,8 @@ class XeroAuthRepository:
             refresh_token=refresh_token,
             expires_at=expires_at,
             scope=scope,
-            business_type=business_type
+            business_type=business_type,
+            app_id=app_id
         )
         
         self.db.add(connection)
@@ -94,7 +96,7 @@ class XeroAuthRepository:
         return connection
     
     def get_connection(self, tenant_id: str) -> Optional[XeroConnection]:
-        """Get active connection by tenant ID"""
+        """Get active connection by tenant ID (legacy method - returns first match)"""
         return self.db.query(XeroConnection).filter(
             and_(
                 XeroConnection.tenant_id == tenant_id,
@@ -102,10 +104,35 @@ class XeroAuthRepository:
             )
         ).first()
     
+    def get_connection_by_tenant_and_app(self, tenant_id: str, app_id: int) -> Optional[XeroConnection]:
+        """Get connection by tenant ID and app ID"""
+        return self.db.query(XeroConnection).filter(
+            and_(
+                XeroConnection.tenant_id == tenant_id,
+                XeroConnection.app_id == app_id,
+                XeroConnection.is_active == True
+            )
+        ).first()
+    
+    def get_connections_by_app(self, app_id: int) -> List[XeroConnection]:
+        """Get all connections for a specific app"""
+        return self.db.query(XeroConnection).filter(
+            and_(
+                XeroConnection.app_id == app_id,
+                XeroConnection.is_active == True
+            )
+        ).all()
+    
     def get_connection_any_status(self, tenant_id: str) -> Optional[XeroConnection]:
         """Get connection by tenant ID regardless of active status"""
         return self.db.query(XeroConnection).filter(
             XeroConnection.tenant_id == tenant_id
+        ).first()
+    
+    def get_connection_by_id(self, connection_id: int) -> Optional[XeroConnection]:
+        """Get connection by database ID"""
+        return self.db.query(XeroConnection).filter(
+            XeroConnection.id == connection_id
         ).first()
     
     def get_all_connections(self) -> List[XeroConnection]:
@@ -114,11 +141,15 @@ class XeroAuthRepository:
             XeroConnection.is_active == True
         ).all()
     
+    def get_all_connections_any_status(self) -> List[XeroConnection]:
+        """Get all connections regardless of active status"""
+        return self.db.query(XeroConnection).all()
+    
     def update_connection_tokens(self, tenant_id: str, access_token: str, 
                                 refresh_token: str, expires_at: datetime, 
-                                scope: str) -> Optional[XeroConnection]:
-        """Update connection with new tokens"""
-        connection = self.get_connection(tenant_id)
+                                scope: str, app_id: int = 1) -> Optional[XeroConnection]:
+        """Update connection with new tokens using app_id"""
+        connection = self.get_connection_by_tenant_and_app(tenant_id, app_id)
         
         if connection:
             old_token_hash = hashlib.sha256(connection.access_token.encode()).hexdigest()
@@ -126,7 +157,7 @@ class XeroAuthRepository:
             connection.refresh_token = refresh_token
             connection.expires_at = expires_at
             connection.scope = scope
-            connection.updated_at = datetime.utcnow()
+            connection.updated_at = datetime.now(timezone.utc)
             
             self.db.commit()
             self.db.refresh(connection)
@@ -141,7 +172,7 @@ class XeroAuthRepository:
     def upsert_connection(self, tenant_id: str, tenant_name: str, 
                          access_token: str, refresh_token: str,
                          expires_at: datetime, scope: str,
-                         business_type: str = "Commercial Properties") -> XeroConnection:
+                         business_type: str = "Commercial Property", app_id: int = 1) -> XeroConnection:
         """
         Upsert connection - update if exists, create if not
         
@@ -152,12 +183,18 @@ class XeroAuthRepository:
             refresh_token: Refresh token
             expires_at: Token expiration time
             scope: Granted scopes
+            app_id: Xero app ID (1-2)
             
         Returns:
             XeroConnection: The upserted connection
         """
-        # Check if connection exists (including inactive ones)
-        existing_connection = self.get_connection_any_status(tenant_id)
+        # Check if connection exists for this tenant and app (regardless of active status)
+        existing_connection = self.db.query(XeroConnection).filter(
+            and_(
+                XeroConnection.tenant_id == tenant_id,
+                XeroConnection.app_id == app_id
+            )
+        ).first()
         
         if existing_connection:
             old_token_hash = hashlib.sha256(existing_connection.access_token.encode()).hexdigest()
@@ -168,7 +205,7 @@ class XeroAuthRepository:
             existing_connection.expires_at = expires_at
             existing_connection.scope = scope
             existing_connection.business_type = business_type
-            existing_connection.updated_at = datetime.utcnow()
+            existing_connection.updated_at = datetime.now(timezone.utc)
             existing_connection.is_active = True  # Reactivate if it was deactivated
             
             self.db.commit()
@@ -188,25 +225,37 @@ class XeroAuthRepository:
                 refresh_token=refresh_token,
                 expires_at=expires_at,
                 scope=scope,
-                business_type=business_type
+                business_type=business_type,
+                app_id=app_id
             )
     
-    def deactivate_connection(self, tenant_id: str) -> bool:
+    def deactivate_connection(self, tenant_id: str, app_id: Optional[int] = None) -> bool:
         """Deactivate a connection (soft delete)"""
-        connection = self.get_connection(tenant_id)
+        if app_id:
+            connection = self.get_connection_by_tenant_and_app(tenant_id, app_id)
+        else:
+            connection = self.get_connection(tenant_id)
         
         if connection:
             connection.is_active = False
-            connection.updated_at = datetime.utcnow()
+            connection.updated_at = datetime.now(timezone.utc)
             self.db.commit()
             return True
         return False
     
-    def delete_connection(self, tenant_id: str) -> bool:
+    def delete_connection(self, tenant_id: str, app_id: Optional[int] = None) -> bool:
         """Hard delete a connection and all related records"""
-        connection = self.db.query(XeroConnection).filter(
-            XeroConnection.tenant_id == tenant_id
-        ).first()
+        if app_id:
+            connection = self.db.query(XeroConnection).filter(
+                and_(
+                    XeroConnection.tenant_id == tenant_id,
+                    XeroConnection.app_id == app_id
+                )
+            ).first()
+        else:
+            connection = self.db.query(XeroConnection).filter(
+                XeroConnection.tenant_id == tenant_id
+            ).first()
         
         if connection:
             # Delete related token history records first
@@ -226,8 +275,8 @@ class XeroAuthRepository:
         return False
     
     def get_expired_connections(self, buffer_minutes: int = 5) -> List[XeroConnection]:
-        """Get connections that need token refresh"""
-        buffer_time = datetime.utcnow() + timedelta(minutes=buffer_minutes)
+        """Get connections that need token refresh, grouped by app"""
+        buffer_time = datetime.now(timezone.utc) + timedelta(minutes=buffer_minutes)
         
         return self.db.query(XeroConnection).filter(
             and_(
@@ -235,6 +284,19 @@ class XeroAuthRepository:
                 XeroConnection.is_active == True
             )
         ).all()
+    
+    def get_app_stats(self) -> Dict[int, int]:
+        """Get connection count per app"""
+        stats = {}
+        for app_id in range(1, 3):  # Apps 1-2
+            count = self.db.query(XeroConnection).filter(
+                and_(
+                    XeroConnection.app_id == app_id,
+                    XeroConnection.is_active == True
+                )
+            ).count()
+            stats[app_id] = count
+        return stats
     
     # Token History Operations
     def _log_token_history(self, connection: XeroConnection, access_token: str,
@@ -308,7 +370,7 @@ class XeroAuthRepository:
         expired_connections = len(self.get_expired_connections())
         
         recent_logs = self.db.query(XeroApiLog).filter(
-            XeroApiLog.created_at >= datetime.utcnow() - timedelta(hours=24)
+            XeroApiLog.created_at >= datetime.now(timezone.utc) - timedelta(hours=24)
         ).count()
         
         return {
