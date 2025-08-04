@@ -438,26 +438,44 @@ async def get_aged_receivables(
             row["Comments"] = ""  # Add blank comments column
             # Generate system comments
             invoice_details = data.get("invoice_details", {})
+            
             # When show_current=False, we need to combine Current and < 1 Month comments
             if not show_current:
                 # Create a copy of invoice_details to avoid modifying the original
                 combined_invoice_details = invoice_details.copy()
-                if "Current" in combined_invoice_details and "< 1 Month" in combined_invoice_details:
-                    # Combine the invoice details from both buckets
-                    combined_invoice_details["Current"] = combined_invoice_details.get("Current", []) + combined_invoice_details.get("< 1 Month", [])
-                    # Remove the < 1 Month entry since it's now combined
-                    if "< 1 Month" in combined_invoice_details:
-                        del combined_invoice_details["< 1 Month"]
+                # Always include "Current" in the data structure, even if not in bucket_names
+                if "Current" not in combined_invoice_details:
+                    combined_invoice_details["Current"] = []
+                if "< 1 Month" not in combined_invoice_details:
+                    combined_invoice_details["< 1 Month"] = []
+                
+                # Combine the invoice details from both buckets
+                combined_invoice_details["Current"] = combined_invoice_details.get("Current", []) + combined_invoice_details.get("< 1 Month", [])
+                # Remove the < 1 Month entry since it's now combined
+                if "< 1 Month" in combined_invoice_details:
+                    del combined_invoice_details["< 1 Month"]
+                
                 # Create a modified bucket_names list for system comments
                 system_bucket_names = []
+                # Create a mapping from display names to actual data keys
+                bucket_mapping = {}
                 for bucket in bucket_names:
                     if bucket == "Current":
                         system_bucket_names.append("Current & < 1 Month")
+                        bucket_mapping["Current & < 1 Month"] = "Current"
                     elif bucket == "< 1 Month":
                         continue  # Skip this bucket in system comments
                     else:
                         system_bucket_names.append(bucket)
-                system_comments = generate_system_comments(combined_invoice_details, system_bucket_names)
+                        bucket_mapping[bucket] = bucket
+                
+                # Create a new invoice_details structure with the correct keys
+                mapped_invoice_details = {}
+                for display_name, data_key in bucket_mapping.items():
+                    if data_key in combined_invoice_details:
+                        mapped_invoice_details[display_name] = combined_invoice_details[data_key]
+                
+                system_comments = generate_system_comments(mapped_invoice_details, system_bucket_names)
             else:
                 system_comments = generate_system_comments(invoice_details, bucket_names)
             row["System Comments"] = system_comments
@@ -491,7 +509,46 @@ async def get_aged_receivables(
                 
                 # Generate system comments
                 invoice_details = data.get("invoice_details", {})
-                system_comments = generate_system_comments(invoice_details, bucket_names)
+                
+                # When show_current=False, we need to combine Current and < 1 Month comments
+                if not show_current:
+                    # Create a copy of invoice_details to avoid modifying the original
+                    combined_invoice_details = invoice_details.copy()
+                    # Always include "Current" in the data structure, even if not in bucket_names
+                    if "Current" not in combined_invoice_details:
+                        combined_invoice_details["Current"] = []
+                    if "< 1 Month" not in combined_invoice_details:
+                        combined_invoice_details["< 1 Month"] = []
+                    
+                    # Combine the invoice details from both buckets
+                    combined_invoice_details["Current"] = combined_invoice_details.get("Current", []) + combined_invoice_details.get("< 1 Month", [])
+                    # Remove the < 1 Month entry since it's now combined
+                    if "< 1 Month" in combined_invoice_details:
+                        del combined_invoice_details["< 1 Month"]
+                    
+                    # Create a modified bucket_names list for system comments
+                    system_bucket_names = []
+                    # Create a mapping from display names to actual data keys
+                    bucket_mapping = {}
+                    for bucket in bucket_names:
+                        if bucket == "Current":
+                            system_bucket_names.append("Current & < 1 Month")
+                            bucket_mapping["Current & < 1 Month"] = "Current"
+                        elif bucket == "< 1 Month":
+                            continue  # Skip this bucket in system comments
+                        else:
+                            system_bucket_names.append(bucket)
+                            bucket_mapping[bucket] = bucket
+                    
+                    # Create a new invoice_details structure with the correct keys
+                    mapped_invoice_details = {}
+                    for display_name, data_key in bucket_mapping.items():
+                        if data_key in combined_invoice_details:
+                            mapped_invoice_details[display_name] = combined_invoice_details[data_key]
+                    
+                    system_comments = generate_system_comments(mapped_invoice_details, system_bucket_names)
+                else:
+                    system_comments = generate_system_comments(invoice_details, bucket_names)
                 row["System Comments"] = system_comments
                 
                 table_data.append(row)
