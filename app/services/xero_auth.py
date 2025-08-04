@@ -324,6 +324,8 @@ class XeroAuthService:
                 )
                 
                 response_time_ms = int((time.time() - start_time) * 1000)
+
+                print(f"🔍 Response: {response.json()}")
                 
                 # Get connection ID for logging
                 connection_id = None
@@ -412,8 +414,12 @@ class XeroAuthService:
         return self.db_repo.get_connection(tenant_id)
     
     def get_all_connections(self) -> list[DBXeroConnection]:
-        """Get all saved connections from database"""
+        """Get all active connections"""
         return self.db_repo.get_all_connections()
+    
+    def get_all_connections_any_status(self) -> list[DBXeroConnection]:
+        """Get all connections regardless of active status"""
+        return self.db_repo.get_all_connections_any_status()
     
     def get_connections_by_app(self, app_id: int) -> list[DBXeroConnection]:
         """Get all connections for a specific app"""
@@ -438,8 +444,57 @@ class XeroAuthService:
         return self.db_repo.delete_connection(tenant_id, app_id)
     
     def deactivate_connection(self, tenant_id: str, app_id: Optional[int] = None) -> bool:
-        """Deactivate connection (soft delete)"""
+        """Deactivate a connection (mark as inactive but don't delete)"""
         return self.db_repo.deactivate_connection(tenant_id, app_id)
+    
+    def handle_invalid_grant_error(self, tenant_id: str, app_id: int, error_message: str = "Invalid grant error") -> Dict[str, Any]:
+        """
+        Handle invalid_grant errors by deactivating the connection and providing re-auth info
+        
+        Args:
+            tenant_id: The tenant ID
+            app_id: The app ID
+            error_message: The error message
+            
+        Returns:
+            Dict with error details and re-auth information
+        """
+        try:
+            # Get connection details before deactivating
+            connection = self.get_connection(tenant_id, app_id)
+            tenant_name = connection.tenant_name if connection else "Unknown"
+            
+            # Deactivate the connection
+            self.deactivate_connection(tenant_id, app_id)
+            
+            # Log the error
+            self.db_repo.log_api_call(
+                connection_id=connection.id if connection else None,
+                endpoint="token_refresh",
+                method="POST",
+                status_code=400,
+                response_time_ms=0,
+                error_message=f"Invalid grant error - connection deactivated: {error_message}"
+            )
+            
+            return {
+                "error": "invalid_grant",
+                "message": "The connection has expired and needs to be re-authenticated",
+                "tenant_id": tenant_id,
+                "tenant_name": tenant_name,
+                "app_id": app_id,
+                "re_auth_url": f"/api/v1/auth/login/redirect?app_id={app_id}",
+                "requires_re_authentication": True
+            }
+            
+        except Exception as e:
+            return {
+                "error": "invalid_grant",
+                "message": f"Failed to handle invalid grant error: {str(e)}",
+                "tenant_id": tenant_id,
+                "app_id": app_id,
+                "requires_re_authentication": True
+            }
     
     def get_expired_connections(self, buffer_minutes: int = 5) -> list[DBXeroConnection]:
         """Get connections that need token refresh"""

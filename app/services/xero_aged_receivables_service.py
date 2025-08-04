@@ -14,6 +14,15 @@ class XeroAgedReceivablesService:
     def __init__(self, xero_auth_service: XeroAuthService):
         self.xero_auth_service = xero_auth_service
     
+    def _safe_float(self, value, default=0.0):
+        """Safely convert any numeric value to float"""
+        if value is None:
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+    
     def get_aged_receivables_data(
         self, 
         tenant_id: str, 
@@ -52,15 +61,19 @@ class XeroAgedReceivablesService:
             
             # Get invoices
             invoices = self._get_unpaid_invoices(accounting_api, tenant_id, date_for_xero, is_future_date)
+            # invoices = []
             
             # Get credit notes
             credit_notes = self._get_credit_notes(accounting_api, tenant_id, date_for_xero)
+            # credit_notes = []
             
             # Get bank transactions
             # bank_transactions = self._get_bank_transactions(accounting_api, tenant_id, date_for_xero)
 
             # Get Overpayments
             overpayments = self._get_overpayments(accounting_api, tenant_id, date_for_xero)
+            # overpayments = []
+            # print("overpayments", overpayments);
 
             return {
                 "invoices": invoices,
@@ -74,7 +87,28 @@ class XeroAgedReceivablesService:
             }
             
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to fetch report data: {str(e)}")
+            error_message = str(e)
+            
+            # Check if this is an invalid_grant error
+            if "invalid_grant" in error_message.lower():
+                # Handle invalid grant error
+                # error_details = self.xero_auth_service.handle_invalid_grant_error(
+                #     tenant_id, 
+                #     connection.app_id, 
+                #     error_message
+                # )
+                raise HTTPException(
+                    status_code=401, 
+                    detail={
+                        "error": "invalid_grant",
+                        "message": "Authentication token has expired and needs to be refreshed",
+                        "requires_re_authentication": True,
+                        "tenant_id": tenant_id,
+                        "app_id": connection.app_id
+                    }
+                )
+            
+            raise HTTPException(status_code=500, detail=f"Failed to fetch report data: {error_message}")
     
     def _get_unpaid_invoices(self, accounting_api, tenant_id: str, date_for_xero: str, is_future_date: bool) -> List:
         """Fetch unpaid and paid invoices with optimized separate calls"""
@@ -92,7 +126,8 @@ class XeroAgedReceivablesService:
         # Call 1: Get AUTHORISED invoices with AmountDue > 0
         unpaid_invoices = []
         page = 1
-        page_size = 100
+        page_size = 1000
+        order = 'Date DESC'
 
         # Write a logic to check if report date is future date or past date (today's date considered as past date)
         if is_future_date:
@@ -101,14 +136,13 @@ class XeroAgedReceivablesService:
         else:
             # Past report date logic: Include invoices that were outstanding as of the report date
             where_clause_unpaid = f'Type == "ACCREC" && Date <= DateTime({date_for_xero})'
-
         while True:
             try:
                 invoices_response = accounting_api.get_invoices(
                     tenant_id,  # xero_tenant_id
                     empty,      # if_modified_since
                     where_clause_unpaid,  # where
-                    empty,      # order
+                    order,      # order
                     empty,      # ids
                     empty,      # invoice_numbers
                     empty,      # contact_ids
@@ -137,6 +171,7 @@ class XeroAgedReceivablesService:
                     
             except Exception as e:
                 break
+            
         
         # Call 2: Get PAID invoices with DueDate > report_date
         paid_invoices = []
@@ -150,7 +185,7 @@ class XeroAgedReceivablesService:
                         tenant_id,  # xero_tenant_id
                         empty,      # if_modified_since
                         where_clause_paid,  # where
-                        empty,      # order
+                        order,      # order
                         empty,      # ids
                         empty,      # invoice_numbers
                         empty,      # contact_ids
@@ -179,6 +214,7 @@ class XeroAgedReceivablesService:
                     
                 except Exception as e:
                     break
+            
         
         # Call 3: Get invoices issued after report date but paid before report date (for past reports)
         # This handles the case where an invoice was issued in July but paid in June
@@ -193,7 +229,7 @@ class XeroAgedReceivablesService:
                         tenant_id,  # xero_tenant_id
                         empty,      # if_modified_since
                         where_clause_early_paid,  # where
-                        empty,      # order
+                        order,      # order
                         empty,      # ids
                         empty,      # invoice_numbers
                         empty,      # contact_ids
@@ -222,8 +258,8 @@ class XeroAgedReceivablesService:
                     
                 except Exception as e:
                     break
-        
-        # Filter AUTHORISED invoices (AmountDue > 0 and Date <= report_date)
+            
+
         for invoice in unpaid_invoices:
             if (is_future_date and invoice.type == "ACCREC" and 
                 invoice.amount_due > 0 and 
@@ -320,6 +356,9 @@ class XeroAgedReceivablesService:
                     due_date = due_date.date()
                 if payment_date and hasattr(payment_date, 'date'):
                     payment_date = payment_date.date()
+
+                adjusted_total_amount = float(total_amount)
+                adjusted_amount_due = float(amount_due)
                 
                 should_include = False
                 is_negative = False
@@ -330,6 +369,12 @@ class XeroAgedReceivablesService:
                     payment_date and payment_date <= report_date and 
                     due_date and due_date > report_date):
                     should_include = False
+
+                elif (issue_date and issue_date <= report_date and 
+                      payment_date is not None and payment_date <= report_date and 
+                      due_date and due_date <= report_date and
+                      amount_due == 0):  # Only for fully paid invoices
+                    should_include = False
                 
                 # Scenario 2: Issue date in June, Not Paid in June, Due date in July - SHOULD SHOW IN CURRENT
                 elif (issue_date and issue_date <= report_date and 
@@ -337,7 +382,8 @@ class XeroAgedReceivablesService:
                       due_date and due_date > report_date):
                     should_include = True
                     is_negative = False
-                    report_amount = amount_due if amount_due > 0 else total_amount
+                    report_amount = adjusted_amount_due if adjusted_amount_due > 0 else adjusted_total_amount
+
                 
                 # Scenario 3: Issue date in July, Paid in June, Due date in July - SHOULD SHOW IN CURRENT AS NEGATIVE
                 elif (issue_date and issue_date > report_date and 
@@ -345,37 +391,85 @@ class XeroAgedReceivablesService:
                       due_date and due_date >= report_date):
                     should_include = True
                     is_negative = True
-                    report_amount = total_amount
+                    report_amount = adjusted_total_amount
                 
                 # Scenario 4: Issue date before report date, paid before report date - SHOULD NOT SHOW IN AR
                 elif (issue_date and issue_date <= report_date and 
-                      payment_date and payment_date <= report_date):
+                      payment_date and payment_date <= report_date and
+                      amount_due == 0):  # Only for fully paid invoices
                     should_include = False
                 
                 # Scenario 5: Issue date before report date, paid after report date - SHOULD SHOW IN CURRENT AS POSITIVE
                 elif (issue_date and issue_date <= report_date and 
                       payment_date and payment_date > report_date):
                     should_include = True
-                    is_negative = False  # Changed to False - normal payment should be positive
-                    report_amount = total_amount
+                    is_negative = False  # Changed to False - normal payment should be positive                                       
+                    # Calculate payments made after report date
+                    payments_after_report = 0.0
+                    payments = getattr(invoice, 'payments', [])
+
+                    
+                    if payments:
+                        for payment in payments:
+                            if hasattr(payment, 'date'):
+                                payment_dt = payment.date
+                                payment_amount = getattr(payment, 'amount', 0.0)
+                                
+                                # Handle Xero date format
+                                if isinstance(payment_dt, str) and payment_dt.startswith('/Date('):
+                                    try:
+                                        timestamp_str = payment_dt.split('(')[1].split('+')[0]
+                                        timestamp = int(timestamp_str) / 1000
+                                        payment_dt = datetime.fromtimestamp(timestamp).date()
+                                    except (ValueError, IndexError):
+                                        continue
+                                elif isinstance(payment_dt, str) and payment_dt.startswith('\\/Date('):
+                                    try:
+                                        timestamp_str = payment_dt.split('(')[1].split('+')[0]
+                                        timestamp = int(timestamp_str) / 1000
+                                        payment_dt = datetime.fromtimestamp(timestamp).date()
+                                    except (ValueError, IndexError):
+                                        continue
+                                elif hasattr(payment_dt, 'date'):
+                                    payment_dt = payment_dt.date()
+                                elif hasattr(payment_dt, 'year') and hasattr(payment_dt, 'month') and hasattr(payment_dt, 'day'):
+                                    # Already a date object
+                                    pass
+                                else:
+                                    continue
+                                
+                                # Only include payments made after report date
+                                if payment_dt > report_date:
+                                    payments_after_report += float(payment_amount)
+                    
+                    # Use payments after report date if available, otherwise use adjusted_total_amount
+                    if payments_after_report > 0:
+                        report_amount = payments_after_report
+                    else:
+                        report_amount = adjusted_total_amount
+                    
                 
+                # Scenario 8: Issue date before report date, due date before report date, partial payments - SHOULD SHOW AS NEGATIVE
+                elif (issue_date and issue_date <= report_date and 
+                      due_date and due_date <= report_date and
+                      amount_paid > 0 and amount_due > 0):
+                    should_include = True
+                    is_negative = False
+                    report_amount = adjusted_amount_due  # Show the partial payment amount as negative               
                 # Default: Include if it was outstanding as of report date (unpaid invoices)
                 elif (issue_date and issue_date <= report_date and 
                       (not payment_date or payment_date > report_date)):
                     should_include = True
                     is_negative = False
-                    report_amount = amount_due if amount_due > 0 else total_amount
-                
+                    report_amount = adjusted_amount_due if adjusted_amount_due > 0 else adjusted_total_amount           
                 # Scenario 6: Issue date before report date, paid on report date - SHOULD NOT SHOW IN AR
                 elif (issue_date and issue_date <= report_date and 
                       payment_date and payment_date == report_date):
-                    should_include = False
-                
+                    should_include = False              
                 # Scenario 7: Issue date before report date, paid on or before report date - SHOULD NOT SHOW IN AR
                 elif (issue_date and issue_date <= report_date and 
                       payment_date and payment_date <= report_date):
-                    should_include = False
-                
+                    should_include = False               
                 if should_include:
                     # Create a modified invoice object with the correct amount
                     modified_invoice = type("Item", (), {})()
@@ -388,6 +482,8 @@ class XeroAgedReceivablesService:
                     setattr(modified_invoice, 'is_negative', is_negative)
                     
                     all_invoices.append(modified_invoice)
+                else:
+                    pass
         
         # Filter PAID invoices with business logic:
         # - DueDate > report_date
@@ -532,6 +628,10 @@ class XeroAgedReceivablesService:
             report_date = datetime(year, month, day).date()
         except Exception as e:
             report_date = datetime.now().date()
+
+        page = 1
+        page_size = 1000
+        all_credit_notes = []
         
         credit_where_clauses = []
         credit_where_clauses.append(f'Type == "ACCRECCREDIT"')
@@ -539,19 +639,34 @@ class XeroAgedReceivablesService:
         credit_where_clauses.append(f'(Status == "PAID" OR Status == "AUTHORISED")')
         credit_where_clause = " && ".join(credit_where_clauses)
         
-        credit_notes_response = accounting_api.get_credit_notes(
-            tenant_id,
-            empty,  # if_modified_since
-            credit_where_clause,
-            empty,  # order
-            empty,  # ids
-            empty,  # contact_ids
-            empty,  # statuses
-        )
+        while True:
+            try:
+                credit_notes_response = accounting_api.get_credit_notes(
+                    tenant_id,
+                    empty,  # if_modified_since
+                    credit_where_clause,
+                    'Date DESC',  # order
+                    page,   # page
+                    empty,  # unitdp
+                    page_size  # page_size
+                )
+            
+                if not credit_notes_response.credit_notes:
+                    break
+                
+                all_credit_notes.extend(credit_notes_response.credit_notes)
+                
+                if len(credit_notes_response.credit_notes) < page_size:
+                    break
+
+                page += 1
+
+            except Exception as e:
+                break
         
         # Filter credit notes based on processing date logic
         filtered_credit_notes = []
-        for credit_note in (credit_notes_response.credit_notes or []):
+        for credit_note in (all_credit_notes or []):
             should_include = False
             
             # Check if credit note was processed after report date
@@ -563,6 +678,25 @@ class XeroAgedReceivablesService:
                 
                 if paid_date > report_date:
                     should_include = True
+                    
+                    # If there are allocations, calculate future date values
+                    if hasattr(credit_note, 'allocations') and credit_note.allocations:
+                        future_amount = 0.0
+                        for allocation in credit_note.allocations:
+                            if hasattr(allocation, 'date') and hasattr(allocation, 'amount'):
+                                allocation_date = allocation.date
+                                if hasattr(allocation_date, 'date'):
+                                    allocation_date = allocation_date.date()
+                                
+                                # Only include allocations processed after report date
+                                if allocation_date > report_date:
+                                    future_amount += self._safe_float(getattr(allocation, 'amount', 0))
+                        
+                        # Set the future amount as remaining_credit
+                        credit_note.remaining_credit = future_amount
+                    else:
+                        # If no allocations, use total amount
+                        credit_note.remaining_credit = self._safe_float(getattr(credit_note, 'total', 0))
             
             # Check payments if no FullyPaidOnDate
             elif hasattr(credit_note, 'payments') and credit_note.payments:
@@ -591,7 +725,7 @@ class XeroAgedReceivablesService:
                         if latest_allocation_date is None or allocation_date > latest_allocation_date:
                             latest_allocation_date = allocation_date
                 
-                if latest_allocation_date and latest_allocation_date > report_date:
+                if latest_allocation_date and latest_allocation_date <= report_date:
                     should_include = True
             
             # If no processing date found, include it (for AUTHORISED credit notes)
@@ -640,7 +774,7 @@ class XeroAgedReceivablesService:
                 tenant_id,
                 empty,  # if_modified_since
                 overpayment_clause,
-                empty,  # order
+                'Date DESC',  # order
                 empty,  # ids
                 empty,  # contact_ids
                 empty,  # statuses,

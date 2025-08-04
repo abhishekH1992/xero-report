@@ -26,6 +26,7 @@ An aged receivables report categorizes outstanding customer invoices into time-b
 - **Business Unit & Company Columns**: Each row is tagged with the Xero connection's business type and company name.
 - **Excel Export**: Download a formatted Excel file for further analysis or sharing.
 - **Combined Buckets**: Optional parameter to combine "Current" and "< 1 Month" in Excel export.
+- **Failed Connections Tracking**: Provides detailed information about connections that failed during processing.
 
 ---
 
@@ -249,7 +250,23 @@ curl -H "X-API-Key: your-api-key" \
     "period_type": "Month",
     "bucket_names": ["Current", "< 1 Month", "1 Month", "2 Months", "Older"]
   },
-  "excel_file": "tmp/aged_receivables_report.xlsx"
+  "excel_file": "tmp/aged_receivables_report.xlsx",
+  "failed_connections": [
+    {
+      "connection_id": "invalid_connection_id",
+      "tenant_id": null,
+      "tenant_name": "Unknown",
+      "app_id": null,
+      "error": "Connection not found",
+      "error_details": "Connection with ID invalid_connection_id was not found in the database"
+    }
+  ],
+  "connection_summary": {
+    "total_connections_attempted": 3,
+    "successful_connections": 2,
+    "failed_connections_count": 1,
+    "success_rate": "66.7%"
+  }
 }
 ```
 
@@ -285,6 +302,53 @@ When `show_current=false`:
 - **API Key**: All requests require a valid API key in the `X-API-Key` header.
 - **Early Payment Detection**: Automatically handles invoices with partial payments before report date.
 - **Excel Bucket Combination**: Use `show_current=false` to combine Current and < 1 Month in Excel export.
+
+---
+
+## Failed Connections Tracking
+
+The report now tracks and reports on connections that fail during processing. This feature helps you identify and troubleshoot connection issues.
+
+### Failed Connection Types
+
+1. **Connection Retrieval Failures**: When a connection ID is provided but cannot be found or retrieved from the database
+2. **Data Processing Failures**: When a connection is found but fails during data fetching or processing
+
+### Response Fields
+
+#### `failed_connections` Array
+Each failed connection includes:
+- `connection_id`: The ID of the failed connection
+- `tenant_id`: The Xero tenant ID (null if connection not found)
+- `tenant_name`: The Xero tenant name (or "Unknown" if not found)
+- `app_id`: The Xero app ID (null if connection not found)
+- `error`: A brief error message
+- `error_details`: Detailed error information including stack trace
+
+#### `connection_summary` Object
+Provides overall statistics:
+- `total_connections_attempted`: Total number of connections processed
+- `successful_connections`: Number of connections that processed successfully
+- `failed_connections_count`: Number of connections that failed
+- `success_rate`: Percentage of successful connections (e.g., "66.7%")
+
+### Example Failed Connection Entry
+```json
+{
+  "connection_id": "12345",
+  "tenant_id": "tenant-uuid",
+  "tenant_name": "My Company",
+  "app_id": 1,
+  "error": "Token expired",
+  "error_details": "Xero API returned 401 Unauthorized: Token has expired and cannot be refreshed"
+}
+```
+
+### Benefits
+- **Visibility**: See exactly which connections failed and why
+- **Troubleshooting**: Detailed error information helps identify the root cause
+- **Monitoring**: Track connection health over time
+- **Partial Success**: Report continues processing even if some connections fail
 
 ---
 

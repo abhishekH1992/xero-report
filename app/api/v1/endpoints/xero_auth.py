@@ -165,6 +165,26 @@ async def refresh_token(
         if not error_details or error_details == "Token refresh failed: ":
             error_details = f"Unknown error occurred: {type(e).__name__}"
         
+        # Check if this is an invalid_grant error
+        if "invalid_grant" in error_details.lower():
+            # Handle invalid grant error
+            error_info = xero_service.handle_invalid_grant_error(
+                tenant_id, 
+                app_id or 1, 
+                error_details
+            )
+            raise HTTPException(
+                status_code=401, 
+                detail={
+                    "error": "invalid_grant",
+                    "message": "The connection has expired and needs to be re-authenticated",
+                    "requires_re_authentication": True,
+                    "re_auth_url": error_info.get("re_auth_url"),
+                    "tenant_id": tenant_id,
+                    "app_id": app_id or 1
+                }
+            )
+        
         # Log the full error for debugging
         print(f"Token refresh error for tenant {tenant_id}, app_id {app_id}: {error_details}")
         print(f"Full traceback: {traceback.format_exc()}")
@@ -177,30 +197,28 @@ async def list_connections(
     app_id: Optional[int] = Query(None, ge=1, le=2, description="Filter by app ID"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
-    """List all stored Xero connections from database, optionally filtered by app"""
-    if app_id:
-        connections = xero_service.get_connections_by_app(app_id)
-    else:
-        connections = xero_service.get_all_connections()
-    
-    connection_list = []
-    for connection in connections:
-        connection_list.append({
-            "tenant_id": connection.tenant_id,
-            "tenant_name": connection.tenant_name,
-            "app_id": connection.app_id,
-            "expires_at": connection.expires_at.isoformat(),
-            "needs_refresh": connection.expires_at <= datetime.now(timezone.utc),
-            "created_at": connection.created_at.isoformat(),
-            "updated_at": connection.updated_at.isoformat(),
-            "is_active": connection.is_active
-        })
-    
-    return {
-        "connections": connection_list,
-        "count": len(connection_list),
-        "filtered_by_app": app_id is not None
-    }
+    """List all Xero connections"""
+    try:
+        connections = xero_service.get_connections_by_app(app_id) if app_id else xero_service.get_all_connections()
+        
+        return {
+            "connections": [
+                {
+                    "id": conn.id,
+                    "tenant_id": conn.tenant_id,
+                    "tenant_name": conn.tenant_name,
+                    "app_id": conn.app_id,
+                    "expires_at": conn.expires_at.isoformat(),
+                    "is_active": conn.is_active,
+                    "created_at": conn.created_at.isoformat(),
+                    "updated_at": conn.updated_at.isoformat()
+                }
+                for conn in connections
+            ],
+            "total": len(connections)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list connections: {str(e)}")
 
 
 @router.get("/connections/{tenant_id}")
@@ -209,22 +227,26 @@ async def get_connection(
     app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
-    """Get specific connection details from database"""
-    connection = xero_service.get_connection(tenant_id, app_id)
-    if not connection:
-        raise HTTPException(status_code=404, detail="Connection not found")
-    
-    return {
-        "tenant_id": connection.tenant_id,
-        "tenant_name": connection.tenant_name,
-        "app_id": connection.app_id,
-        "expires_at": connection.expires_at.isoformat(),
-        "needs_refresh": connection.expires_at <= datetime.now(timezone.utc),
-        "scope": connection.scope,
-        "created_at": connection.created_at.isoformat(),
-        "updated_at": connection.updated_at.isoformat(),
-        "is_active": connection.is_active
-    }
+    """Get connection details for a specific tenant"""
+    try:
+        connection = xero_service.get_connection(tenant_id, app_id)
+        if not connection:
+            raise HTTPException(status_code=404, detail=f"Connection not found for tenant {tenant_id}")
+        
+        return {
+            "id": connection.id,
+            "tenant_id": connection.tenant_id,
+            "tenant_name": connection.tenant_name,
+            "app_id": connection.app_id,
+            "expires_at": connection.expires_at.isoformat(),
+            "is_active": connection.is_active,
+            "created_at": connection.created_at.isoformat(),
+            "updated_at": connection.updated_at.isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get connection: {str(e)}")
 
 
 @router.delete("/connections/{tenant_id}")
@@ -233,12 +255,17 @@ async def delete_connection(
     app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
-    """Delete a stored connection from database"""
-    success = xero_service.delete_connection(tenant_id, app_id)
-    if success:
-        return {"message": "Connection deleted successfully"}
-    else:
-        raise HTTPException(status_code=404, detail="Connection not found")
+    """Delete a connection for a specific tenant"""
+    try:
+        success = xero_service.delete_connection(tenant_id, app_id)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Connection not found for tenant {tenant_id}")
+        
+        return {"message": f"Connection for tenant {tenant_id} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete connection: {str(e)}")
 
 
 @router.post("/connections/{tenant_id}/deactivate")
@@ -247,12 +274,47 @@ async def deactivate_connection(
     app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
-    """Deactivate a connection (soft delete)"""
-    success = xero_service.deactivate_connection(tenant_id, app_id)
-    if success:
-        return {"message": "Connection deactivated successfully"}
-    else:
-        raise HTTPException(status_code=404, detail="Connection not found")
+    """Deactivate a connection for a specific tenant"""
+    try:
+        success = xero_service.deactivate_connection(tenant_id, app_id)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Connection not found for tenant {tenant_id}")
+        
+        return {"message": f"Connection for tenant {tenant_id} deactivated successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to deactivate connection: {str(e)}")
+
+
+@router.post("/connections/{tenant_id}/handle-invalid-grant")
+async def handle_invalid_grant(
+    tenant_id: str,
+    app_id: int = Query(1, ge=1, le=2, description="Xero app ID (1-2)"),
+    error_message: str = Query("Invalid grant error", description="Error message from the failed request"),
+    xero_service: XeroAuthService = Depends(get_xero_auth_service)
+):
+    """
+    Handle invalid_grant errors for a specific tenant
+    
+    This endpoint:
+    1. Deactivates the problematic connection
+    2. Logs the error
+    3. Returns re-authentication information
+    """
+    try:
+        error_info = xero_service.handle_invalid_grant_error(tenant_id, app_id, error_message)
+        
+        return {
+            "message": "Connection deactivated due to invalid grant error",
+            "requires_re_authentication": True,
+            "re_auth_url": error_info.get("re_auth_url"),
+            "tenant_id": tenant_id,
+            "app_id": app_id,
+            "tenant_name": error_info.get("tenant_name", "Unknown")
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to handle invalid grant error: {str(e)}")
 
 
 @router.get("/connections/{tenant_id}/history")
