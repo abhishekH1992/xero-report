@@ -52,8 +52,10 @@ def export_cashflow_to_excel(
         top=Side("thin"), bottom=Side("thin")
     )
     
-    # Create Bank Balance Sheet (blank for now)
-    create_bank_balance_sheet(bank_balance_sheet, title_font, title_alignment)
+    # Create Bank Balance Sheet with ownership grouping
+    create_bank_balance_sheet(bank_balance_sheet, cashflow_data, date_ranges,
+                             header_font, header_fill, header_alignment,
+                             title_font, title_alignment, border)
     
     # Create ASB, ANZ, and BNZ sheets
     create_bank_sheet(asb_sheet, "ASB", cashflow_data, date_ranges, 
@@ -75,12 +77,244 @@ def export_cashflow_to_excel(
     return path
 
 
-def create_bank_balance_sheet(ws, title_font, title_alignment):
-    """Create the Bank Balance Sheet (blank for now)."""
-    ws["A1"] = "Bank Balance Sheet"
-    ws["A1"].font = title_font
-    ws["A1"].alignment = title_alignment
-    ws.merge_cells("A1:Z1")
+def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: List[Tuple[str, str]], 
+                             header_font, header_fill, header_alignment, title_font, title_alignment, border):
+    """Create comprehensive Bank Balance Report grouped by ownership."""
+    
+    # Get ownership data from database
+    from app.database.database import engine
+    from app.database.models import XeroConnection
+    from sqlalchemy.orm import sessionmaker
+    
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    
+    try:
+        # Get all connections with ownership data
+        connections = session.query(XeroConnection).filter(XeroConnection.is_active == True).all()
+        
+        # Group connections by ownership
+        ownership_groups = {
+            "fully_owned": [],
+            "partially_owned": [],
+            "not_owned": []
+        }
+        
+        for connection in connections:
+            if connection.ownership == "fully_owned":
+                ownership_groups["fully_owned"].append(connection)
+            elif connection.ownership == "partially_owned":
+                ownership_groups["partially_owned"].append(connection)
+            elif connection.ownership == "not_owned":
+                ownership_groups["not_owned"].append(connection)
+        
+        current_row = 1
+        
+        # Process each ownership group
+        ownership_titles = {
+            "fully_owned": "100 percent owned by John and Michael",
+            "partially_owned": "Not 100 percent owned by John and Michael", 
+            "not_owned": "John and Michael has no ownership interest"
+        }
+        
+        for ownership_type, title in ownership_titles.items():
+            connections_in_group = ownership_groups[ownership_type]
+            
+            if not connections_in_group:
+                continue
+                
+            # Add ownership section title
+            ws[f"A{current_row}"] = title
+            ws[f"A{current_row}"].font = Font(bold=True, size=16)
+            ws[f"A{current_row}"].alignment = Alignment("left")
+            ws.merge_cells(f"A{current_row}:Z{current_row}")
+            current_row += 2
+            
+            # Group connections by bank (ASB, ANZ, etc.)
+            bank_groups = {}
+            for connection in connections_in_group:
+                connection_name = connection.tenant_name.strip()
+                if connection_name in cashflow_data:
+                    for account_data in cashflow_data[connection_name].get('accounts', []):
+                        bank_name = account_data.get('bank_name', 'Unknown')
+                        if bank_name not in bank_groups:
+                            bank_groups[bank_name] = []
+                        bank_groups[bank_name].append({
+                            'connection': connection,
+                            'account_data': account_data
+                        })
+            
+            # Process each bank group
+            for bank_name, bank_accounts in bank_groups.items():
+                if not bank_accounts:
+                    continue
+                    
+                # Add bank section
+                ws[f"A{current_row}"] = f"Bank Name: {bank_name}"
+                ws[f"A{current_row}"].font = Font(bold=True, size=14)
+                ws[f"A{current_row}"].alignment = Alignment("left")
+                ws.merge_cells(f"A{current_row}:Z{current_row}")
+                current_row += 1
+                
+                # Create headers
+                headers = ["Account Number", "Account Name", "Company"]
+                
+                # Add period headers (latest first) with actual date ranges
+                for i in range(len(date_ranges)):
+                    start_date, end_date = date_ranges[i]
+                    period_label = format_date_range_for_excel(start_date, end_date)
+                    headers.append(period_label)
+                
+                # Add difference column
+                if len(date_ranges) > 1:
+                    headers.append("Difference")
+                
+                # Add additional columns
+                headers.extend([
+                    "Minimum Balance", 
+                    "Next due date for Loan payment",
+                    "Payment amount",
+                    "",
+                    ""
+                ])
+                
+                # Write headers
+                for col_idx, header in enumerate(headers, 1):
+                    cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                    cell.value = header
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = header_alignment
+                    cell.border = border
+                
+                current_row += 1
+                
+                # Write data rows
+                for bank_account in bank_accounts:
+                    account_data = bank_account['account_data']
+                    connection = bank_account['connection']
+                    
+                    # Account details
+                    ws[f"A{current_row}"] = format_account_number(account_data.get('account_number', ''))
+                    ws[f"B{current_row}"] = account_data.get('account_name', '')
+                    ws[f"C{current_row}"] = connection.tenant_name.strip()
+                    
+                    # Add available/closing balances (latest first)
+                    col_idx = 4
+                    available_balances = []
+                    
+                    for i in range(len(date_ranges)):
+                        start_date, end_date = date_ranges[i]
+                        period_key = f"{start_date}_{end_date}"
+                        period_data = account_data.get('periods', {}).get(period_key, {})
+                        available_balance = period_data.get('closing_balance', 0)  # Use closing/available balance
+                        available_balances.append(available_balance)
+                        
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = float(available_balance) if available_balance else 0
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        col_idx += 1
+                    
+                    # Add difference column (Period 1 available - Period 2 available)
+                    if len(available_balances) > 1:
+                        difference = available_balances[0] - available_balances[1]  # Period 1 - Period 2
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = float(difference)
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        
+                        # Color coding for negative values
+                        if difference < 0:
+                            cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red
+                            cell.font = Font(color="FF0000")  # Red text
+                        
+                        col_idx += 1
+                    
+                    # Add additional columns
+                    ws[f"{get_column_letter(col_idx)}{current_row}"] = connection.min_balance or ""
+                    col_idx += 1
+                    ws[f"{get_column_letter(col_idx)}{current_row}"] = ""  # Next due date
+                    col_idx += 1
+                    ws[f"{get_column_letter(col_idx)}{current_row}"] = ""  # Payment amount
+                    col_idx += 1
+                    ws[f"{get_column_letter(col_idx)}{current_row}"] = ""  # Blank column
+                    col_idx += 1
+                    ws[f"{get_column_letter(col_idx)}{current_row}"] = ""  # Blank column
+                    
+                    current_row += 1
+                
+                # Add totals for this bank
+                if bank_accounts:
+                    ws[f"A{current_row}"] = "Total"
+                    ws[f"A{current_row}"].font = Font(bold=True)
+                    ws[f"A{current_row}"].border = border
+                    
+                    # Calculate totals for each period using available balances
+                    col_idx = 4
+                    bank_totals = [0] * len(date_ranges)
+                    
+                    for bank_account in bank_accounts:
+                        account_data = bank_account['account_data']
+                        for i in range(len(date_ranges)):
+                            start_date, end_date = date_ranges[i]
+                            period_key = f"{start_date}_{end_date}"
+                            period_data = account_data.get('periods', {}).get(period_key, {})
+                            available_balance = period_data.get('closing_balance', 0)  # Use available/closing balance
+                            bank_totals[i] += available_balance
+                    
+                    # Write totals
+                    for total in bank_totals:
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = float(total)
+                        cell.font = Font(bold=True)
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        col_idx += 1
+                    
+                    # Add difference total
+                    if len(bank_totals) > 1:
+                        difference = bank_totals[0] - bank_totals[1]
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = float(difference)
+                        cell.font = Font(bold=True)
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        
+                        if difference < 0:
+                            cell.fill = PatternFill("solid", fgColor="FFE6E6")
+                            cell.font = Font(bold=True, color="FF0000")
+                        
+                        col_idx += 1
+                    
+                    # Add blank columns for totals
+                    for _ in range(5):
+                        ws[f"{get_column_letter(col_idx)}{current_row}"] = ""
+                        col_idx += 1
+                    
+                    current_row += 1
+                
+                # Add spacing between banks
+                current_row += 2
+            
+            # Add ownership group totals
+            if ownership_groups[ownership_type]:
+                ws[f"A{current_row}"] = f"Total for {title}"
+                ws[f"A{current_row}"].font = Font(bold=True, size=14)
+                ws[f"A{current_row}"].border = border
+                current_row += 2
+        
+        # Set column widths
+        ws.column_dimensions['A'].width = 25  # Account Number
+        ws.column_dimensions['B'].width = 25  # Account Name
+        ws.column_dimensions['C'].width = 30  # Company
+        
+        # Set width for balance columns
+        for i in range(4, 20):  # Adjust range as needed
+            ws.column_dimensions[get_column_letter(i)].width = 20
+        
+    finally:
+        session.close()
 
 
 def create_bank_sheet(ws, bank_name: str, cashflow_data: Dict[str, Any], 
