@@ -850,7 +850,7 @@ def create_other_banks_sheet(ws, cashflow_data: Dict[str, Any],
     current_row += 1
     
     # Define the banks to include in "Other" sheet
-    other_banks = ["BNZ", "ICBC", "CCB / BOC", "Kiwi Bank", "Hua Xia Bank"]
+    other_banks = ["BNZ", "ICBC", "CCB", "BOC", "Kiwi Bank", "Hua Xia Bank"]
     
     for bank_name in other_banks:
         # Check if we have data for this bank

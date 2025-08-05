@@ -343,7 +343,13 @@ class XeroCashFlowService:
             return True
         # CCB/BOC bank: account number starts with 88
         elif account_number.startswith('88'):
-            setattr(account, 'bank_name', 'CCB / BOC')
+            # Separate CCB and BOC based on account number prefix
+            if account_number.startswith('8888'):
+                setattr(account, 'bank_name', 'BOC')
+            elif account_number.startswith('8886'):
+                setattr(account, 'bank_name', 'CCB')
+            else:
+                setattr(account, 'bank_name', 'CCB / BOC')
             return True
         # Kiwi Bank: account number starts with 38
         elif account_number.startswith('38'):
