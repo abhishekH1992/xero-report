@@ -123,11 +123,21 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             if not connections_in_group:
                 continue
                 
+            # Calculate table width for title merging
+            # 3 fixed columns (Account Number, Account Name, Company) + balance columns + additional columns
+            balance_cols = len(date_ranges)
+            if len(date_ranges) > 1:
+                balance_cols += 1  # Add one more for difference column
+            
+            additional_cols = 3  # Minimum Balance, Next due date for Loan payment, Payment amount
+            table_width = 3 + balance_cols + additional_cols
+            last_column = get_column_letter(table_width)
+            
             # Add ownership section title
             ws[f"A{current_row}"] = title
             ws[f"A{current_row}"].font = Font(bold=True, size=16)
             ws[f"A{current_row}"].alignment = Alignment("left")
-            ws.merge_cells(f"A{current_row}:Z{current_row}")
+            ws.merge_cells(f"A{current_row}:{last_column}{current_row}")
             current_row += 2
             
             # Group connections by bank (ASB, ANZ, etc.)
@@ -153,7 +163,7 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                 ws[f"A{current_row}"] = f"Bank Name: {bank_name}"
                 ws[f"A{current_row}"].font = Font(bold=True, size=14)
                 ws[f"A{current_row}"].alignment = Alignment("left")
-                ws.merge_cells(f"A{current_row}:Z{current_row}")
+                ws.merge_cells(f"A{current_row}:{last_column}{current_row}")
                 current_row += 1
                 
                 # Create headers
@@ -366,6 +376,8 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                 ws[f"A{current_row}"] = f"Total for {title}"
                 ws[f"A{current_row}"].font = Font(bold=True, size=14)
                 ws[f"A{current_row}"].border = border
+                ws[f"A{current_row}"].alignment = Alignment("left")
+                ws.merge_cells(f"A{current_row}:C{current_row}")
                 current_row += 2
         
         # Set column widths
