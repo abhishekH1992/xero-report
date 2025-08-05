@@ -142,10 +142,18 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             
             # Group connections by bank (ASB, ANZ, etc.)
             bank_groups = {}
+            # Accounts to exclude
+            excluded_accounts = ["389026059757103", "389026059757102"]
+            
             for connection in connections_in_group:
                 connection_name = connection.tenant_name
                 if connection_name in cashflow_data:
                     for account_data in cashflow_data[connection_name].get('accounts', []):
+                        # Skip excluded accounts
+                        account_number = account_data.get('account_number', '')
+                        if account_number in excluded_accounts:
+                            continue
+                            
                         bank_name = account_data.get('bank_name', 'Unknown')
                         if bank_name not in bank_groups:
                             bank_groups[bank_name] = []
@@ -658,10 +666,18 @@ def create_bank_sheet(ws, bank_name: str, cashflow_data: Dict[str, Any],
     total_row = current_row
     
     # Process data for this bank
+    # Accounts to exclude
+    excluded_accounts = ["389026059757103", "389026059757102"]
+    
     for connection_name, connection_data in cashflow_data.items():
         for account_data in connection_data.get('accounts', []):
             if account_data.get('bank_name') == bank_name:
-                account_number = format_account_number(account_data.get('account_number', ''))
+                # Skip excluded accounts
+                account_number_raw = account_data.get('account_number', '')
+                if account_number_raw in excluded_accounts:
+                    continue
+                    
+                account_number = format_account_number(account_number_raw)
                 
                 # Write account and connection name
                 ws[f"A{current_row}"] = account_number
@@ -771,6 +787,9 @@ def generate_cashflow_json_response(
     }
 
     # Process each connection
+    # Accounts to exclude
+    excluded_accounts = ["389026059757103", "389026059757102"]
+    
     for connection_name, connection_data in cashflow_data.items():
         connection_id = connection_data.get('connection_id', None)
         connection_info = {
@@ -781,6 +800,10 @@ def generate_cashflow_json_response(
         
         # Process each bank account
         for account_data in connection_data.get('accounts', []):
+            # Skip excluded accounts
+            account_number = account_data.get('account_number', '')
+            if account_number in excluded_accounts:
+                continue
             bank_info = {
                 "bank_name": account_data.get('bank_name'),
                 "account_number": format_account_number(account_data.get('account_number', '')),
@@ -937,10 +960,18 @@ def create_other_banks_sheet(ws, cashflow_data: Dict[str, Any],
         total_row = current_row
         
         # Process data for this specific bank
+        # Accounts to exclude
+        excluded_accounts = ["389026059757103", "389026059757102"]
+        
         for connection_name, connection_data in cashflow_data.items():
             for account_data in connection_data.get('accounts', []):
                 if account_data.get('bank_name') == bank_name:
-                    account_number = format_account_number(account_data.get('account_number', ''))
+                    # Skip excluded accounts
+                    account_number_raw = account_data.get('account_number', '')
+                    if account_number_raw in excluded_accounts:
+                        continue
+                        
+                    account_number = format_account_number(account_number_raw)
                     
                     # Write account and connection name
                     ws[f"A{current_row}"] = account_number
