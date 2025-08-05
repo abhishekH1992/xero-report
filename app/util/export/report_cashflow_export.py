@@ -373,12 +373,132 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             
             # Add ownership group totals
             if ownership_groups[ownership_type]:
-                ws[f"A{current_row}"] = f"Total for {title}"
-                ws[f"A{current_row}"].font = Font(bold=True, size=14)
-                ws[f"A{current_row}"].border = border
-                ws[f"A{current_row}"].alignment = Alignment("left")
-                ws.merge_cells(f"A{current_row}:C{current_row}")
-                current_row += 2
+                # Add calculation section for fully_owned group
+                if ownership_type == "fully_owned":
+                    # Calculate total available cash for each period
+                    period_totals = {}
+                    for start_date, end_date in date_ranges:
+                        period_key = f"{start_date}_{end_date}"
+                        period_totals[period_key] = 0
+                        for bank_name, bank_accounts in bank_groups.items():
+                            for account_info in bank_accounts:
+                                account_data = account_info['account_data']
+                                period_data = account_data.get('periods', {}).get(period_key, {})
+                                closing_balance = period_data.get('closing_balance', 0)
+                                period_totals[period_key] += float(closing_balance) if closing_balance else 0
+                    
+                    # Static minimum cash holding
+                    minimum_cash_holding = 5000000.00
+                    
+                    # Add calculation table headers
+                    ws[f"A{current_row}"] = "Total available cash"
+                    ws[f"A{current_row}"].font = Font(bold=True)
+                    ws[f"A{current_row}"].border = border
+                    ws.merge_cells(f"A{current_row}:C{current_row}")
+                    
+                    # Write period totals
+                    col_idx = 4
+                    for start_date, end_date in date_ranges:
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = period_totals[f"{start_date}_{end_date}"]
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        col_idx += 1
+                    
+                    # Add difference column if multiple periods
+                    if len(date_ranges) > 1:
+                        latest_period = list(period_totals.keys())[0]
+                        previous_period = list(period_totals.keys())[1]
+                        difference = period_totals[latest_period] - period_totals[previous_period]
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = difference
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                    
+                    current_row += 1
+                    
+                    ws[f"A{current_row}"] = "Minimum cash holding"
+                    ws[f"A{current_row}"].font = Font(bold=True)
+                    ws[f"A{current_row}"].border = border
+                    ws.merge_cells(f"A{current_row}:C{current_row}")
+
+ 
+                    # Write minimum cash holding for each period
+                    col_idx = 4
+                    for start_date, end_date in date_ranges:
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = minimum_cash_holding
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        col_idx += 1
+                    
+                    # Add difference column if multiple periods
+                    if len(date_ranges) > 1:
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = 0  # No difference for static value
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                    
+                    current_row += 1
+                    
+                    ws[f"A{current_row}"] = "Minimum cash holding excess"
+                    ws[f"A{current_row}"].font = Font(bold=True)
+                    ws[f"A{current_row}"].border = border
+                    ws.merge_cells(f"A{current_row}:C{current_row}")
+
+                    # Calculate and write excess for each period
+                    col_idx = 4
+                    for start_date, end_date in date_ranges:
+                        period_key = f"{start_date}_{end_date}"
+                        excess = period_totals[period_key] - minimum_cash_holding
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = excess
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        
+                        # Apply red background and text if negative
+                        if excess < 0:
+                            cell.fill = PatternFill("solid", fgColor="FFCCCC")  # Light red background
+                            cell.font = Font(bold=True, color="FF0000")  # Red text
+                        
+                        col_idx += 1
+                    
+                    # Add difference column if multiple periods
+                    if len(date_ranges) > 1:
+                        latest_excess = period_totals[list(period_totals.keys())[0]] - minimum_cash_holding
+                        previous_excess = period_totals[list(period_totals.keys())[1]] - minimum_cash_holding
+                        excess_difference = latest_excess - previous_excess
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = excess_difference
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        
+                        # Apply red background and text if negative
+                        if excess_difference < 0:
+                            cell.fill = PatternFill("solid", fgColor="FFCCCC")  # Light red background
+                            cell.font = Font(bold=True, color="FF0000")  # Red text
+                    
+                    current_row += 2
+                else:
+                    # For other ownership groups, just add total available cash
+                    total_available_cash = 0
+                    for bank_name, bank_accounts in bank_groups.items():
+                        for account_info in bank_accounts:
+                            account_data = account_info['account_data']
+                            for start_date, end_date in date_ranges:
+                                period_key = f"{start_date}_{end_date}"
+                                period_data = account_data.get('periods', {}).get(period_key, {})
+                                closing_balance = period_data.get('closing_balance', 0)
+                                total_available_cash += float(closing_balance) if closing_balance else 0
+                    
+                    ws[f"A{current_row}"] = "Total available cash"
+                    ws[f"A{current_row}"].font = Font(bold=True)
+                    ws[f"A{current_row}"].border = border
+                    ws[f"B{current_row}"] = total_available_cash
+                    ws[f"B{current_row}"].number_format = '"$"#,##0.00'
+                    ws[f"B{current_row}"].border = border
+                    ws.merge_cells(f"A{current_row}:C{current_row}")
+                    current_row += 2
         
         # Set column widths
         ws.column_dimensions['A'].width = 25  # Account Number
