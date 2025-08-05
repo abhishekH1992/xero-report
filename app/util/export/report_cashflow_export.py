@@ -480,24 +480,54 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                     
                     current_row += 2
                 else:
-                    # For other ownership groups, just add total available cash
-                    total_available_cash = 0
-                    for bank_name, bank_accounts in bank_groups.items():
-                        for account_info in bank_accounts:
-                            account_data = account_info['account_data']
-                            for start_date, end_date in date_ranges:
-                                period_key = f"{start_date}_{end_date}"
+                    # For other ownership groups, calculate total available cash for each period
+                    period_totals = {}
+                    for start_date, end_date in date_ranges:
+                        period_key = f"{start_date}_{end_date}"
+                        period_totals[period_key] = 0
+                        for bank_name, bank_accounts in bank_groups.items():
+                            for account_info in bank_accounts:
+                                account_data = account_info['account_data']
                                 period_data = account_data.get('periods', {}).get(period_key, {})
                                 closing_balance = period_data.get('closing_balance', 0)
-                                total_available_cash += float(closing_balance) if closing_balance else 0
+                                period_totals[period_key] += float(closing_balance) if closing_balance else 0
                     
+                    # Add calculation table headers
                     ws[f"A{current_row}"] = "Total available cash"
                     ws[f"A{current_row}"].font = Font(bold=True)
                     ws[f"A{current_row}"].border = border
-                    ws[f"B{current_row}"] = total_available_cash
-                    ws[f"B{current_row}"].number_format = '"$"#,##0.00'
-                    ws[f"B{current_row}"].border = border
                     ws.merge_cells(f"A{current_row}:C{current_row}")
+                    
+                    # Write period totals
+                    col_idx = 4
+                    for start_date, end_date in date_ranges:
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = period_totals[f"{start_date}_{end_date}"]
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        
+                        # Apply red background and text if negative
+                        if cell.value < 0:
+                            cell.fill = PatternFill("solid", fgColor="FFCCCC")  # Light red background
+                            cell.font = Font(bold=True, color="FF0000")  # Red text
+                        
+                        col_idx += 1
+                    
+                    # Add difference column if multiple periods
+                    if len(date_ranges) > 1:
+                        latest_period = list(period_totals.keys())[0]
+                        previous_period = list(period_totals.keys())[1]
+                        difference = period_totals[latest_period] - period_totals[previous_period]
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = difference
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        
+                        # Apply red background and text if negative
+                        if difference < 0:
+                            cell.fill = PatternFill("solid", fgColor="FFCCCC")  # Light red background
+                            cell.font = Font(bold=True, color="FF0000")  # Red text
+                    
                     current_row += 2
         
         # Set column widths
