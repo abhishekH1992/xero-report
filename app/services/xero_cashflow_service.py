@@ -81,18 +81,21 @@ class XeroCashFlowService:
                 connection_data = await self._process_connection(
                     connection, date_ranges, report_date
                 )
+                # Include connection_id in the data structure
+                connection_data['connection_id'] = connection.tenant_id
                 cashflow_data[connection.tenant_name] = connection_data
             except Exception as e:
                 error_msg = f"Error processing connection {connection.tenant_name}: {str(e)}"
                 print(f"[CASHFLOW] {error_msg}")
                 errors.append({
                     "connection_name": connection.tenant_name,
+                    "connection_id": connection.id,
                     "error": str(e),
                     "timestamp": datetime.now().isoformat()
                 })
                 # Continue with other connections even if one fails
                 continue
-        
+            
         return {
             "data": cashflow_data,
             "errors": errors
@@ -269,7 +272,7 @@ class XeroCashFlowService:
                                     "closing_balance": closing_balance
                                 }
             
-            print(f"[CASHFLOW] Final bank_data: {bank_data}")
+            # print(f"[CASHFLOW] Final bank_data: {bank_data}")
             return bank_data
             
         except Exception as e:

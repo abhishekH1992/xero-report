@@ -133,7 +133,7 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             # Group connections by bank (ASB, ANZ, etc.)
             bank_groups = {}
             for connection in connections_in_group:
-                connection_name = connection.tenant_name.strip()
+                connection_name = connection.tenant_name
                 if connection_name in cashflow_data:
                     for account_data in cashflow_data[connection_name].get('accounts', []):
                         bank_name = account_data.get('bank_name', 'Unknown')
@@ -607,11 +607,13 @@ def generate_cashflow_json_response(
         },
         "errors": errors or []
     }
-    
+
     # Process each connection
     for connection_name, connection_data in cashflow_data.items():
+        connection_id = connection_data.get('connection_id', None)
         connection_info = {
             "connection_name": connection_name,
+            "connection_id": connection_id,
             "banks": []
         }
         

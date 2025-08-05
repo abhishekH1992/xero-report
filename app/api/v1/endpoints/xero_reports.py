@@ -693,7 +693,7 @@ async def get_cashflow_report(
             filename="cashflow_report",
             output_dir="tmp"
         )
-        
+
         # Generate JSON response
         json_response = generate_cashflow_json_response(
             cashflow_data=cashflow_data,
