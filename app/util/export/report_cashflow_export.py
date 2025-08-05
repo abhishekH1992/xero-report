@@ -15,7 +15,8 @@ def export_cashflow_to_excel(
     cashflow_data: Dict[str, Any],
     date_ranges: List[Tuple[str, str]],
     filename: str = "cashflow_report",
-    output_dir: str = "tmp"
+    output_dir: str = "tmp",
+    report_date: str = None
 ) -> str:
     """
     Export CashFlow report data to Excel with multiple sheets for ASB, ANZ, and Other banks (BNZ, ICBC, CCB, Kiwi Bank).
@@ -25,6 +26,7 @@ def export_cashflow_to_excel(
         date_ranges: List of date ranges used in the report
         filename: Base filename for the Excel file
         output_dir: Directory to save the Excel file
+        report_date: Report date string in YYYY-MM-DD format
     
     Returns:
         Path to the generated Excel file
@@ -55,7 +57,7 @@ def export_cashflow_to_excel(
     # Create Bank Balance Sheet with ownership grouping
     create_bank_balance_sheet(bank_balance_sheet, cashflow_data, date_ranges,
                              header_font, header_fill, header_alignment,
-                             title_font, title_alignment, border)
+                             title_font, title_alignment, border, report_date)
     
     # Create ASB, ANZ, and BNZ sheets
     create_bank_sheet(asb_sheet, "ASB", cashflow_data, date_ranges, 
@@ -78,7 +80,7 @@ def export_cashflow_to_excel(
 
 
 def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: List[Tuple[str, str]], 
-                             header_font, header_fill, header_alignment, title_font, title_alignment, border):
+                             header_font, header_fill, header_alignment, title_font, title_alignment, border, report_date: str = None):
     """Create comprehensive Bank Balance Report grouped by ownership."""
     
     # Get ownership data from database
@@ -109,6 +111,205 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                 ownership_groups["not_owned"].append(connection)
         
         current_row = 1
+        
+        # Add Cash Balance Summary section at the top
+        from app.util.report_helper import calculate_cash_balance_summary
+        
+        # Calculate cash balance summary
+        cash_summary = calculate_cash_balance_summary(cashflow_data, date_ranges, ownership_groups, report_date)
+        
+        # Add report title
+        ws[f"A{current_row}"] = f"Cash balance report - {cash_summary['report_date']}"
+        ws[f"A{current_row}"].font = Font(bold=True, size=16)
+        ws[f"A{current_row}"].alignment = Alignment("left")
+        ws.merge_cells(f"A{current_row}:I{current_row}")
+        current_row += 2
+        
+        # Add calculation table headers
+        ws[f"A{current_row}"] = "Total available cash"
+        ws[f"A{current_row}"].font = Font(bold=True)
+        ws[f"A{current_row}"].border = border
+        
+        # Write period headers
+        col_idx = 4
+        for start_date, end_date in date_ranges:
+            period_label = format_date_range_for_excel(start_date, end_date)
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = period_label
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment("center")
+            cell.border = border
+            col_idx += 1
+        
+        # Add difference column if multiple periods
+        if len(date_ranges) > 1:
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = "Difference"
+            cell.font = Font(bold=True)
+            cell.alignment = Alignment("center")
+            cell.border = border
+        
+        current_row += 1
+        
+        # Add fully owned row
+        ws[f"A{current_row}"] = "100% owned entity"
+        ws[f"A{current_row}"].font = Font(bold=True)
+        ws[f"A{current_row}"].border = border
+        
+        col_idx = 4
+        for start_date, end_date in date_ranges:
+            period_key = f"{start_date}_{end_date}"
+            period_summary = cash_summary["periods"][period_key]
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = period_summary["fully_owned"]
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+            col_idx += 1
+        
+        # Add difference column if multiple periods
+        if len(date_ranges) > 1:
+            latest_period = list(cash_summary["periods"].keys())[0]
+            previous_period = list(cash_summary["periods"].keys())[1]
+            difference = cash_summary["periods"][latest_period]["fully_owned"] - cash_summary["periods"][previous_period]["fully_owned"]
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = difference
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+        
+        current_row += 1
+        
+        # Add partially owned row
+        ws[f"A{current_row}"] = "Majority control - SWH / RCR & DG"
+        ws[f"A{current_row}"].font = Font(bold=True)
+        ws[f"A{current_row}"].border = border
+        
+        col_idx = 4
+        for start_date, end_date in date_ranges:
+            period_key = f"{start_date}_{end_date}"
+            period_summary = cash_summary["periods"][period_key]
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = period_summary["partially_owned"]
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+            col_idx += 1
+        
+        # Add difference column if multiple periods
+        if len(date_ranges) > 1:
+            latest_period = list(cash_summary["periods"].keys())[0]
+            previous_period = list(cash_summary["periods"].keys())[1]
+            difference = cash_summary["periods"][latest_period]["partially_owned"] - cash_summary["periods"][previous_period]["partially_owned"]
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = difference
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+        
+        current_row += 1
+        
+        # Add total row (100% + SWH)
+        ws[f"A{current_row}"] = "100% + SWH"
+        ws[f"A{current_row}"].font = Font(bold=True)
+        ws[f"A{current_row}"].border = border
+        
+        col_idx = 4
+        for start_date, end_date in date_ranges:
+            period_key = f"{start_date}_{end_date}"
+            period_summary = cash_summary["periods"][period_key]
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = period_summary["total_available_cash"]
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+            col_idx += 1
+        
+        # Add difference column if multiple periods
+        if len(date_ranges) > 1:
+            latest_period = list(cash_summary["periods"].keys())[0]
+            previous_period = list(cash_summary["periods"].keys())[1]
+            difference = cash_summary["periods"][latest_period]["total_available_cash"] - cash_summary["periods"][previous_period]["total_available_cash"]
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = difference
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+        
+        current_row += 2
+        
+        # Add Minimum cash holding section
+        ws[f"A{current_row}"] = "Minimum cash holding"
+        ws[f"A{current_row}"].font = Font(bold=True)
+        ws[f"A{current_row}"].border = border
+        
+        col_idx = 4
+        for start_date, end_date in date_ranges:
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = cash_summary["minimum_cash_holding"]
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+            col_idx += 1
+        
+        # Add difference column if multiple periods
+        if len(date_ranges) > 1:
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = 0  # No difference for static value
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+        
+        current_row += 1
+        
+        # Add Minimum cash holding excess row
+        ws[f"A{current_row}"] = "Amount over/(under) minimum"
+        ws[f"A{current_row}"].font = Font(bold=True)
+        ws[f"A{current_row}"].border = border
+        
+        col_idx = 4
+        for start_date, end_date in date_ranges:
+            period_key = f"{start_date}_{end_date}"
+            period_summary = cash_summary["periods"][period_key]
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = period_summary["minimum_cash_holding_excess"]
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+            col_idx += 1
+        
+        # Add difference column if multiple periods
+        if len(date_ranges) > 1:
+            latest_period = list(cash_summary["periods"].keys())[0]
+            previous_period = list(cash_summary["periods"].keys())[1]
+            difference = cash_summary["periods"][latest_period]["minimum_cash_holding_excess"] - cash_summary["periods"][previous_period]["minimum_cash_holding_excess"]
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = difference
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+        
+        current_row += 2
+        
+        # Add blank row
+        current_row += 1
+        
+        # Add Total Cash section (with term deposit)
+        ws[f"A{current_row}"] = "Total Cash"
+        ws[f"A{current_row}"].font = Font(bold=True)
+        ws[f"A{current_row}"].border = border
+        
+        col_idx = 4
+        for start_date, end_date in date_ranges:
+            period_key = f"{start_date}_{end_date}"
+            period_summary = cash_summary["periods"][period_key]
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = period_summary["total_with_term_deposit"]
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+            col_idx += 1
+        
+        # Add difference column if multiple periods
+        if len(date_ranges) > 1:
+            latest_period = list(cash_summary["periods"].keys())[0]
+            previous_period = list(cash_summary["periods"].keys())[1]
+            difference = cash_summary["periods"][latest_period]["total_with_term_deposit"] - cash_summary["periods"][previous_period]["total_with_term_deposit"]
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = difference
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+        
+        current_row += 3
         
         # Process each ownership group
         ownership_titles = {

@@ -691,7 +691,8 @@ async def get_cashflow_report(
             cashflow_data=cashflow_data,
             date_ranges=date_ranges,
             filename="cashflow_report",
-            output_dir="tmp"
+            output_dir="tmp",
+            report_date=report_date_str
         )
 
         # Generate JSON response

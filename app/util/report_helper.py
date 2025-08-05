@@ -341,3 +341,62 @@ def format_date_range_for_excel(start_date: str, end_date: str) -> str:
         return f"{start_formatted} - {end_formatted}"
     except ValueError:
         return f"{start_date} - {end_date}"
+
+
+def calculate_cash_balance_summary(cashflow_data: dict, date_ranges: List[Tuple[str, str]], 
+                                 ownership_groups: dict, report_date: str) -> dict:
+    """
+    Calculate cash balance summary for the Bank Balance Report.
+    
+    Args:
+        cashflow_data: Dictionary containing cashflow data
+        date_ranges: List of date ranges used in the report
+        ownership_groups: Dictionary containing connections grouped by ownership
+        report_date: Report date string
+    
+    Returns:
+        Dictionary containing calculated cash balance summary
+    """
+    summary = {
+        "report_date": report_date,
+        "periods": {},
+        "term_deposit": 1300000.00,  # Static term deposit value
+        "minimum_cash_holding": 5000000.00  # Static minimum cash holding
+    }
+    
+    # Calculate for each period
+    for start_date, end_date in date_ranges:
+        period_key = f"{start_date}_{end_date}"
+        summary["periods"][period_key] = {
+            "fully_owned": 0.0,
+            "partially_owned": 0.0,
+            "total_available_cash": 0.0,
+            "total_with_term_deposit": 0.0,
+            "minimum_cash_holding_excess": 0.0
+        }
+        
+        # Calculate fully owned cash
+        for connection in ownership_groups.get("fully_owned", []):
+            connection_name = connection.tenant_name
+            if connection_name in cashflow_data:
+                for account_data in cashflow_data[connection_name].get('accounts', []):
+                    period_data = account_data.get('periods', {}).get(period_key, {})
+                    closing_balance = period_data.get('closing_balance', 0)
+                    summary["periods"][period_key]["fully_owned"] += float(closing_balance) if closing_balance else 0
+        
+        # Calculate partially owned cash
+        for connection in ownership_groups.get("partially_owned", []):
+            connection_name = connection.tenant_name
+            if connection_name in cashflow_data:
+                for account_data in cashflow_data[connection_name].get('accounts', []):
+                    period_data = account_data.get('periods', {}).get(period_key, {})
+                    closing_balance = period_data.get('closing_balance', 0)
+                    summary["periods"][period_key]["partially_owned"] += float(closing_balance) if closing_balance else 0
+        
+        # Calculate totals
+        period_summary = summary["periods"][period_key]
+        period_summary["total_available_cash"] = period_summary["fully_owned"] + period_summary["partially_owned"]
+        period_summary["total_with_term_deposit"] = period_summary["total_available_cash"] + summary["term_deposit"]
+        period_summary["minimum_cash_holding_excess"] = period_summary["total_available_cash"] - summary["minimum_cash_holding"]
+    
+    return summary
