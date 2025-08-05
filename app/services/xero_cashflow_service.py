@@ -37,7 +37,7 @@ class XeroCashFlowService:
         report_date: str,
         period: int = 2,
         period_of: str = "Week",
-        connection_id: str = None
+        connection_ids: str = None
     ) -> Dict[str, Any]:
         """
         Get CashFlow data for all connections or a specific connection.
@@ -53,10 +53,19 @@ class XeroCashFlowService:
         """
         # Calculate date ranges
         date_ranges = calculate_date_ranges(report_date, period, period_of)
+
+        connections = [];
         
         # Get connections
-        if connection_id:
-            connections = [self.xero_auth_service.get_connection(connection_id)]
+        if connection_ids:
+                connection_ids = [cid.strip() for cid in connection_ids.split(',')]
+                for cid in connection_ids:
+                    connection = self.xero_auth_service.get_connection(cid)
+                    if connection:
+                        connections.append(connection)
+                    else:
+                        print(f"[CASHFLOW] Connection with ID {cid} was not found in the database")
+                        continue
         else:
             connections = self.xero_auth_service.get_all_connections()
         

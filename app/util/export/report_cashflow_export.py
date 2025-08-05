@@ -396,15 +396,15 @@ def create_bank_sheet(ws, bank_name: str, cashflow_data: Dict[str, Any],
     current_row = 1
     
     # Calculate table width based on date ranges
-    # 3 fixed columns (Account Number, Account Name, Company) + 4 columns per date range
-    table_width = 3 + (len(date_ranges) * 4)
+    # 3 fixed columns (Account Number, Account Name, Company) + 2 columns per date range
+    table_width = 3 + (len(date_ranges) * 2)
     last_column = get_column_letter(table_width)
     
     # Title
     ws.merge_cells(f"A{current_row}:{last_column}{current_row}")
     ws[f"A{current_row}"] = f"{bank_name} Cash Flow Report"
     ws[f"A{current_row}"].font = title_font
-    ws[f"A{current_row}"].alignment = title_alignment
+    ws[f"A{current_row}"].alignment = Alignment("center")
     current_row += 1
     
     # Date ranges header row
@@ -651,8 +651,8 @@ def create_other_banks_sheet(ws, cashflow_data: Dict[str, Any],
     current_row = 1
     
     # Calculate table width based on date ranges
-    # 3 fixed columns (Account Number, Account Name, Company) + 4 columns per date range
-    table_width = 3 + (len(date_ranges) * 4)
+    # 3 fixed columns (Account Number, Account Name, Company) + 2 columns per date range
+    table_width = 3 + (len(date_ranges) * 2)
     last_column = get_column_letter(table_width)
     
     # Title

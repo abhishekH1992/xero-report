@@ -651,7 +651,7 @@ async def get_cashflow_report(
     period: int = Query(2, description="Number of periods to go back"),
     period_of: str = Query("Week", description="Type of period (Week, Month, Year)"),
     cashflow_service: XeroCashFlowService = Depends(get_cashflow_service),
-    connection_id: str = Query(None, description="Connection ID")
+    connection_ids: str = Query(None, description="Connection ID(s) - comma-separated for multiple connections")
 ):
     """
     CashFlow report: fetch bank statement data from all connections or a specific connection,
@@ -675,7 +675,7 @@ async def get_cashflow_report(
             report_date=report_date_str,
             period=period,
             period_of=period_of,
-            connection_id=connection_id
+            connection_ids=connection_ids
         )
         
         # Extract data and errors from result
