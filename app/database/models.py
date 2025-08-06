@@ -41,6 +41,8 @@ class XeroConnection(Base):
     expires_at = Column(DateTime, nullable=False)
     scope = Column(String(500), nullable=False)
     business_type = Column(String(255), default="Commercial Property", nullable=False)
+    ownership = Column(String(50), nullable=True)  # fully_owned, partially_owned, not_owned
+    min_balance = Column(Float, nullable=True)  # Minimum balance threshold
     created_at = Column(DateTime, default=utc_now, nullable=False)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)

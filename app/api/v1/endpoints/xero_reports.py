@@ -8,8 +8,10 @@ from xero_python.accounting.api.accounting_api import empty
 
 from app.services.xero_aged_receivables_service import XeroAgedReceivablesService
 from app.services.xero_auth import XeroAuthService
+from app.services.xero_cashflow_service import XeroCashFlowService
 from app.util.report_export import export_report_to_excel, generate_system_comments
 from app.util.report_helper import calculate_aging_bucket, generate_bucket_names, process_financial_item
+from app.util.export.report_cashflow_export import export_cashflow_to_excel, generate_cashflow_json_response
 from app.util.auth import api_key_auth
 
 router = APIRouter(
@@ -20,6 +22,7 @@ router = APIRouter(
 
 get_aged_receivables_service = XeroAgedReceivablesService.get_service_dependency()
 get_xero_auth_service = XeroAuthService.get_service_dependency()
+get_cashflow_service = XeroCashFlowService.get_service_dependency()
 
 @router.get("/aged-receivables")
 async def get_aged_receivables(
@@ -641,3 +644,66 @@ async def get_aged_receivables(
         response_data["excel_file"] = excel_file_path
     
     return response_data
+
+@router.get("/cashflow")
+async def get_cashflow_report(
+    report_date: str = Query(None, description="Report date in YYYY-MM-DD format"),
+    period: int = Query(2, description="Number of periods to go back"),
+    period_of: str = Query("Week", description="Type of period (Week, Month, Year)"),
+    cashflow_service: XeroCashFlowService = Depends(get_cashflow_service),
+    connection_ids: str = Query(None, description="Connection ID(s) - comma-separated for multiple connections")
+):
+    """
+    CashFlow report: fetch bank statement data from all connections or a specific connection,
+    filter for ASB and ANZ banks, and export to Excel with multiple sheets.
+    """
+    # Parse report_date or use today
+    if report_date:
+        try:
+            parsed_date = datetime.strptime(report_date, "%Y-%m-%d").date()
+            report_date_obj = parsed_date
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid report_date format. Use YYYY-MM-DD.")
+    else:
+        report_date_obj = datetime.utcnow().date()
+    
+    report_date_str = report_date_obj.strftime("%Y-%m-%d")
+    
+    try:
+        # Get cashflow data
+        result = await cashflow_service.get_cashflow_data(
+            report_date=report_date_str,
+            period=period,
+            period_of=period_of,
+            connection_ids=connection_ids
+        )
+        
+        # Extract data and errors from result
+        cashflow_data = result.get("data", {})
+        errors = result.get("errors", [])
+        
+        # Calculate date ranges for export
+        from app.util.report_helper import calculate_date_ranges
+        date_ranges = calculate_date_ranges(report_date_str, period, period_of)
+        
+        # Export to Excel
+        excel_file_path = export_cashflow_to_excel(
+            cashflow_data=cashflow_data,
+            date_ranges=date_ranges,
+            filename="cashflow_report",
+            output_dir="tmp",
+            report_date=report_date_str
+        )
+
+        # Generate JSON response
+        json_response = generate_cashflow_json_response(
+            cashflow_data=cashflow_data,
+            date_ranges=date_ranges,
+            excel_file_path=excel_file_path,
+            errors=errors
+        )
+        
+        return json_response
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating CashFlow report: {str(e)}")

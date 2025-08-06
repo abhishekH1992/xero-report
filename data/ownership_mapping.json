@@ -1,0 +1,190 @@
+{
+    "Dataguard Limited": {
+        "ownership": "partially_owned",
+        "min_balance": 1000000
+    },
+    "Stonewood Homes NZ Master Franchisee Limited": {
+        "ownership": "partially_owned",
+        "min_balance": 1000000
+    },
+    "RCR INFRASTRUCTURE LIMITED": {
+        "ownership": "partially_owned",
+        "min_balance": 1000000
+    },
+    "Urban Hub Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "Clearwater No. 1 Limited": {
+        "ownership": "not_owned",
+        "min_balance": null
+    },
+    "Key Capital Management Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "Sloane Development Limited Partnership": {
+        "ownership": "not_owned",
+        "min_balance": null
+    },
+    "Stonewood Group Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "RCR GREEN MANAGEMENT LIMITED": {
+        "ownership": "partially_owned",
+        "min_balance": 1000000
+    },
+    "Willis St Project Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "55 The Square Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "1125 Arawa Street Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "37 Vivian Street Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "146 Vivian Street Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "89 Courtenay Place Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "13 Gore Street Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "Willis Street Parking Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "Chow Group Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "Vivian Street Properties Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "16 Park Avenue Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "137 Quay Street Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "RCR GREEN DEVELOPMENT LIMITED": {
+        "ownership": "partially_owned",
+        "min_balance": 1000000
+    },
+    "Hart Project Management Limited": {
+        "ownership": "not_owned",
+        "min_balance": null
+    },
+    "Hilton Project Management Limited": {
+        "ownership": "not_owned",
+        "min_balance": null
+    },
+    "Langs Beach Property Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "322 K RD Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "1135 Arawa Street Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "Castledine Development Management Limited": {
+        "ownership": "not_owned",
+        "min_balance": null
+    },
+    "318 Lambton Quay Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "Queensland Homes Master Franchise Pty Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "280 Queen Street Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "Huka No.1 Limited": {
+        "ownership": "not_owned",
+        "min_balance": null
+    },
+    "Top of Tory Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "308 St Heliers Limited Partnership": {
+        "ownership": "not_owned",
+        "min_balance": null
+    },
+    "Castledine Development Ltd Partnership": {
+        "ownership": "partially_owned",
+        "min_balance": 1000000
+    },
+    "Project Vivian Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "Courtenay Capital Investments Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "Prudencia (Asia-Pacific) Insurance Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "Stonewood Developments Limited": {
+        "ownership": "not_owned",
+        "min_balance": null
+    },
+    "Stanley Ave Project Limited Partnership": {
+        "ownership": "not_owned",
+        "min_balance": null
+    },
+    "Stonewood Capital Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "Clearwater Projects Limited": {
+        "ownership": "not_owned",
+        "min_balance": null
+    },
+    "Shakespeare Project Limited Partnership": {
+        "ownership": "partially_owned",
+        "min_balance": 1000000
+    },
+    "SZ Project No.1 Limited": {
+        "ownership": "not_owned",
+        "min_balance": null
+    },
+    "280 QS Project Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    },
+    "Stonewood Key Capital Limited": {
+        "ownership": "partially_owned",
+        "min_balance": 1000000
+    },
+    "35 Vivian Street Limited": {
+        "ownership": "fully_owned",
+        "min_balance": 2000000
+    }
+}
