@@ -7,8 +7,7 @@ from app.util.token_manager import TokenManager
 
 from app.util.xero_connection import create_xero_api_client
 from app.util.report_helper import (
-    calculate_date_ranges, 
-    filter_bank_accounts
+    calculate_date_ranges
 )
 from app.services.xero_auth import XeroAuthService
 from app.database.models import XeroConnection
