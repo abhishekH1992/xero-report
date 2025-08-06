@@ -111,8 +111,6 @@ def export_report_to_excel(
         cell.border = border
         ws.column_dimensions[get_column_letter(idx)].width = col.get("width", 15)
     header_row = current_row  # Save the header row index
-    # Do NOT increment current_row here!
-    # current_row += 1  # <-- REMOVE THIS LINE
 
     # Sort data
     data = sorted(
@@ -123,16 +121,6 @@ def export_report_to_excel(
     # last_company = None
 
     for idx, row_data in enumerate(data):
-        company = row_data.get("Company", "")
-        # Thick separator _only_ when company changes
-        # if idx > 0 and company != last_company:
-        #     current_row += 1
-        #     for c in range(1, len(columns) + 1):
-        #         sep = ws.cell(row=current_row, column=c, value="")
-        #         sep.fill = PatternFill("solid", fgColor="D9D9D9")
-        #         sep.border = border
-
-        # last_company = company
         # Write the data row
         current_row += 1
 

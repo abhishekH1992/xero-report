@@ -29,6 +29,9 @@ COPY . .
 # Create database directory
 RUN mkdir -p database
 
+# Create tmp directory for Excel files
+RUN mkdir -p tmp
+
 # Create non-root user for security
 RUN adduser --disabled-password --gecos '' appuser \
     && chown -R appuser:appuser /app
