@@ -117,12 +117,29 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
         
         # Calculate cash balance summary
         cash_summary = calculate_cash_balance_summary(cashflow_data, date_ranges, ownership_groups, report_date)
-
-        print(cash_summary)
         
         # Add report title
         ws[f"A{current_row}"] = f"Cash balance report - {cash_summary['report_date']}"
         ws[f"A{current_row}"].font = Font(bold=True, size=16)
+        ws[f"A{current_row}"].alignment = Alignment("center")
+        ws.merge_cells(f"A{current_row}:I{current_row}")
+        current_row += 1
+        
+        # Add signature lines in the same column
+        ws[f"A{current_row}"] = "Prepared by: AI / Sophie Lee"
+        ws[f"A{current_row}"].font = Font(bold=True)
+        ws[f"A{current_row}"].alignment = Alignment("center")
+        ws.merge_cells(f"A{current_row}:I{current_row}")
+        current_row += 1
+        
+        ws[f"A{current_row}"] = "Reviewed by: Financial Controller"
+        ws[f"A{current_row}"].font = Font(bold=True)
+        ws[f"A{current_row}"].alignment = Alignment("center")
+        ws.merge_cells(f"A{current_row}:I{current_row}")
+        current_row += 1
+        
+        ws[f"A{current_row}"] = "Approved by: Financial Controller"
+        ws[f"A{current_row}"].font = Font(bold=True)
         ws[f"A{current_row}"].alignment = Alignment("center")
         ws.merge_cells(f"A{current_row}:I{current_row}")
         current_row += 2
