@@ -178,6 +178,9 @@ class XeroCashFlowService:
             from_date = datetime.strptime(start_date, "%Y-%m-%d")
             to_date = datetime.strptime(end_date, "%Y-%m-%d")
             
+            # Accounts to exclude from calculations
+            excluded_accounts = ["389026059757103", "389026059757102"]
+            
             # Get bank summary report
             report_response = accounting_api.get_report_bank_summary(
                 tenant_id,
@@ -223,15 +226,23 @@ class XeroCashFlowService:
                                         if account_id:
                                             try:
                                                 account_details = self._get_account_details(accounting_api, tenant_id, account_id)
-                                                if self._is_supported_bank_account(account_details):
-                                                    bank_data[account_id] = {
-                                                        'account_name': account_name,
-                                                        'bank_name': getattr(account_details, 'bank_name', ''),
-                                                        'opening_balance': opening_balance,
-                                                        'cash_received': cash_received,
-                                                        'cash_spent': cash_spent,
-                                                        'closing_balance': closing_balance
-                                                    }
+                                                if account_details:
+                                                    # Get account number for exclusion check
+                                                    account_number = getattr(account_details, 'bank_account_number', '')
+                                                    
+                                                    # Skip excluded accounts
+                                                    if account_number in excluded_accounts:
+                                                        continue
+                                                    
+                                                    if self._is_supported_bank_account(account_details):
+                                                        bank_data[account_id] = {
+                                                            'account_name': account_name,
+                                                            'bank_name': getattr(account_details, 'bank_name', ''),
+                                                            'opening_balance': opening_balance,
+                                                            'cash_received': cash_received,
+                                                            'cash_spent': cash_spent,
+                                                            'closing_balance': closing_balance
+                                                        }
                                             except Exception as e:
                                                 print(f"[CASHFLOW] Error getting account details for {account_id}: {e}")
                         
@@ -263,15 +274,27 @@ class XeroCashFlowService:
                                     closing_balance = float(getattr(cell, 'value', '0'))
                             
                             if account_id:
-                                bank_data[account_id] = {
-                                    "account_name": account_name,
-                                    "opening_balance": opening_balance,
-                                    "cash_received": cash_received,
-                                    "cash_spent": cash_spent,
-                                    "closing_balance": closing_balance
-                                }
+                                # For fallback case, we need to get account details to check account number
+                                try:
+                                    account_details = self._get_account_details(accounting_api, tenant_id, account_id)
+                                    if account_details:
+                                        # Get account number for exclusion check
+                                        account_number = getattr(account_details, 'bank_account_number', '')
+                                        
+                                        # Skip excluded accounts
+                                        if account_number in excluded_accounts:
+                                            continue
+                                        
+                                        bank_data[account_id] = {
+                                            "account_name": account_name,
+                                            "opening_balance": opening_balance,
+                                            "cash_received": cash_received,
+                                            "cash_spent": cash_spent,
+                                            "closing_balance": closing_balance
+                                        }
+                                except Exception as e:
+                                    print(f"[CASHFLOW] Error getting account details for {account_id} in fallback: {e}")
             
-            # print(f"[CASHFLOW] Final bank_data: {bank_data}")
             return bank_data
             
         except Exception as e:

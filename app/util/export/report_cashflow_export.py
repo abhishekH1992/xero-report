@@ -328,6 +328,10 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             cell.number_format = '"$"#,##0.00'
             cell.border = border
             cell.font = Font(bold=True)
+            # Add red formatting for negative values
+            if period_summary["minimum_cash_holding_excess"] < 0:
+                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                cell.font = Font(bold=True, color="FF0000")  # Red text
             col_idx += 1
         
         # Add difference column if multiple periods
@@ -340,6 +344,10 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             cell.font = Font(bold=True)
             cell.number_format = '"$"#,##0.00'
             cell.border = border
+            # Add red formatting for negative values
+            if difference < 0:
+                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                cell.font = Font(bold=True, color="FF0000")  # Red text
 
         # Add new column data
         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
@@ -367,6 +375,10 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             cell.value = period_summary["total_available_cash"]
             cell.number_format = '"$"#,##0.00'
             cell.border = border
+            # Add red formatting for negative values
+            if period_summary["total_available_cash"] < 0:
+                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                cell.font = Font(color="FF0000")  # Red text
             col_idx += 1
         
         # Add difference column if multiple periods
@@ -378,6 +390,10 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             cell.value = difference
             cell.number_format = '"$"#,##0.00'
             cell.border = border
+            # Add red formatting for negative values
+            if difference < 0:
+                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                cell.font = Font(color="FF0000")  # Red text
             col_idx += 1
         
         # Add new column data
@@ -429,6 +445,10 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             cell.number_format = '"$"#,##0.00'
             cell.border = border
             cell.font = Font(bold=True)
+            # Add red formatting for negative values
+            if period_summary["total_with_term_deposit"] < 0:
+                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                cell.font = Font(bold=True, color="FF0000")  # Red text
             col_idx += 1
         
         # Add difference column if multiple periods
@@ -440,6 +460,10 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
         cell.number_format = '"$"#,##0.00'
         cell.border = border
         cell.font = Font(bold=True)
+        # Add red formatting for negative values
+        if difference < 0:
+            cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+            cell.font = Font(bold=True, color="FF0000")  # Red text
         col_idx += 1
             
 
@@ -555,18 +579,11 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             
             # Group connections by bank (ASB, ANZ, etc.)
             bank_groups = {}
-            # Accounts to exclude
-            excluded_accounts = ["389026059757103", "389026059757102"]
             
             for connection in connections_in_group:
                 connection_name = connection.tenant_name
                 if connection_name in cashflow_data:
                     for account_data in cashflow_data[connection_name].get('accounts', []):
-                        # Skip excluded accounts
-                        account_number = account_data.get('account_number', '')
-                        if account_number in excluded_accounts:
-                            continue
-                            
                         bank_name = account_data.get('bank_name', 'Unknown')
                         if bank_name not in bank_groups:
                             bank_groups[bank_name] = []
@@ -1079,16 +1096,11 @@ def create_bank_sheet(ws, bank_name: str, cashflow_data: Dict[str, Any],
     total_row = current_row
     
     # Process data for this bank
-    # Accounts to exclude
-    excluded_accounts = ["389026059757103", "389026059757102"]
     
     for connection_name, connection_data in cashflow_data.items():
         for account_data in connection_data.get('accounts', []):
             if account_data.get('bank_name') == bank_name:
-                # Skip excluded accounts
                 account_number_raw = account_data.get('account_number', '')
-                if account_number_raw in excluded_accounts:
-                    continue
                     
                 account_number = format_account_number(account_number_raw)
                 
@@ -1200,9 +1212,6 @@ def generate_cashflow_json_response(
     }
 
     # Process each connection
-    # Accounts to exclude
-    excluded_accounts = ["389026059757103", "389026059757102"]
-    
     for connection_name, connection_data in cashflow_data.items():
         connection_id = connection_data.get('connection_id', None)
         connection_info = {
@@ -1213,10 +1222,6 @@ def generate_cashflow_json_response(
         
         # Process each bank account
         for account_data in connection_data.get('accounts', []):
-            # Skip excluded accounts
-            account_number = account_data.get('account_number', '')
-            if account_number in excluded_accounts:
-                continue
             bank_info = {
                 "bank_name": account_data.get('bank_name'),
                 "account_number": format_account_number(account_data.get('account_number', '')),
@@ -1373,17 +1378,10 @@ def create_other_banks_sheet(ws, cashflow_data: Dict[str, Any],
         total_row = current_row
         
         # Process data for this specific bank
-        # Accounts to exclude
-        excluded_accounts = ["389026059757103", "389026059757102"]
-        
         for connection_name, connection_data in cashflow_data.items():
             for account_data in connection_data.get('accounts', []):
                 if account_data.get('bank_name') == bank_name:
-                    # Skip excluded accounts
                     account_number_raw = account_data.get('account_number', '')
-                    if account_number_raw in excluded_accounts:
-                        continue
-                        
                     account_number = format_account_number(account_number_raw)
                     
                     # Write account and connection name
