@@ -1,7 +1,3 @@
-# fly.toml app configuration file generated for finance-assistant-api on 2024-01-01T00:00:00Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-
 app = "finance-assistant-api"
 primary_region = "iad"
 
@@ -14,9 +10,9 @@ primary_region = "iad"
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = true
+  auto_stop_machines = false  # <- Disable Auto-Stop to Keep Alive
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1    # <- Ensure at least 1 Machine stays running
   processes = ["app"]
 
   [[http_service.checks]]
@@ -24,7 +20,7 @@ primary_region = "iad"
     interval = "30s"
     method = "GET"
     timeout = "5s"
-    path = "/health"
+    path = "/health"  # <- Ensure this route exists and returns 200 OK
 
 [[vm]]
   cpu_kind = "shared"
@@ -36,4 +32,4 @@ primary_region = "iad"
   destination = "/app/database"
 
 [processes]
-  app = "gunicorn app.main:app --bind 0.0.0.0:8000 --workers 1 --worker-class uvicorn.workers.UvicornWorker" 
+  app = "gunicorn app.main:app --bind 0.0.0.0:8000 --workers 1 --worker-class uvicorn.workers.UvicornWorker"
