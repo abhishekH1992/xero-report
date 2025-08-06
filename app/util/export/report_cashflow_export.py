@@ -195,6 +195,10 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             cell.value = difference
             cell.number_format = '"$"#,##0.00'
             cell.border = border
+            # Add red formatting for negative values
+            if difference < 0:
+                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                cell.font = Font(color="FF0000")  # Red text
             col_idx += 1
         
         # Add new column data
@@ -224,6 +228,10 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             cell.value = difference
             cell.number_format = '"$"#,##0.00'
             cell.border = border
+            # Add red formatting for negative values
+            if difference < 0:
+                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                cell.font = Font(color="FF0000")  # Red text
             col_idx += 1
         
         # Add new column data
@@ -255,6 +263,10 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             cell.number_format = '"$"#,##0.00'
             cell.border = border
             cell.font = Font(bold=True)
+            # Add red formatting for negative values
+            if difference < 0:
+                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                cell.font = Font(bold=True, color="FF0000")  # Red text
             col_idx += 1
         
         # Add new column data
