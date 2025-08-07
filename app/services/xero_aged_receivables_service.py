@@ -1309,41 +1309,53 @@ class XeroAgedReceivablesService:
         
         # Generate Excel file only if is_response_only is 0
         if is_response_only == 0:
-            # Define columns for Excel export
-            excel_columns = []
-            for bucket in bucket_names:
-                if bucket == "Current" and not show_current:
-                    # Combine Current and < 1 Month in Excel header
-                    excel_columns.append({"header": "Current & < 1 Month", "key": bucket, "width": 15, "format": "currency"})
-                elif bucket == "< 1 Month" and not show_current:
-                    # Skip the < 1 Month column when show_current=False since it's combined with Current
-                    continue
-                else:
-                    excel_columns.append({"header": bucket, "key": bucket, "width": 15, "format": "currency"})
-            
-            columns = [
-                {"header": "Business Unit", "key": "Business Unit", "width": 20, "format": "text"},
-                {"header": "Company", "key": "Company", "width": 25, "format": "text"},
-                {"header": "Contact", "key": "Contact", "width": 30, "format": "text"},
-                *excel_columns,
-                {"header": "Total", "key": "Total", "width": 15, "format": "currency"},
-                {"header": "Comments", "key": "Comments", "width": 25, "format": "text"},
-                {"header": "System Comments", "key": "System Comments", "width": 60, "format": "text"}
-            ]
-            
-            # Export to Excel
-            excel_file_path = export_report_to_excel(
-                data=excel_data,
-                columns=columns,
-                filename="aged_receivables_report",
-                sheet_name="Aged Receivables",
-                title="Aged Receivables Summary",
-                report_date=f"As at {report_date_obj.strftime('%d %B %Y')}",
-                output_dir="tmp",
-                include_totals=True,
-                include_percentages=True
-            )
-            
-            response_data["excel_file"] = excel_file_path
+            try:
+                # Define columns for Excel export
+                excel_columns = []
+                for bucket in bucket_names:
+                    if bucket == "Current" and not show_current:
+                        # Combine Current and < 1 Month in Excel header
+                        excel_columns.append({"header": "Current & < 1 Month", "key": bucket, "width": 15, "format": "currency"})
+                    elif bucket == "< 1 Month" and not show_current:
+                        # Skip the < 1 Month column when show_current=False since it's combined with Current
+                        continue
+                    else:
+                        excel_columns.append({"header": bucket, "key": bucket, "width": 15, "format": "currency"})
+                
+                columns = [
+                    {"header": "Business Unit", "key": "Business Unit", "width": 20, "format": "text"},
+                    {"header": "Company", "key": "Company", "width": 25, "format": "text"},
+                    {"header": "Contact", "key": "Contact", "width": 30, "format": "text"},
+                    *excel_columns,
+                    {"header": "Total", "key": "Total", "width": 15, "format": "currency"},
+                    {"header": "Comments", "key": "Comments", "width": 25, "format": "text"},
+                    {"header": "System Comments", "key": "System Comments", "width": 60, "format": "text"}
+                ]
+                
+                # Export to Excel
+                excel_file_path = export_report_to_excel(
+                    data=excel_data,
+                    columns=columns,
+                    filename="aged_receivables_report",
+                    sheet_name="Aged Receivables",
+                    title="Aged Receivables Summary",
+                    report_date=f"As at {report_date_obj.strftime('%d %B %Y')}",
+                    output_dir="tmp",
+                    include_totals=True,
+                    include_percentages=True
+                )
+                
+                response_data["excel_file"] = excel_file_path
+                print(f"[AGED_RECEIVABLES] Excel file generated successfully: {excel_file_path}")
+                
+            except Exception as e:
+                import traceback
+                error_details = traceback.format_exc()
+                print(f"[AGED_RECEIVABLES] Error generating Excel file: {str(e)}")
+                print(f"[AGED_RECEIVABLES] Full error details: {error_details}")
+                
+                # Don't include excel_file in response if generation failed
+                response_data["excel_generation_error"] = str(e)
+                response_data["excel_generation_details"] = error_details
         
         return response_data
