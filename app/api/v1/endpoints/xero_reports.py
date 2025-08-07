@@ -153,7 +153,7 @@ async def get_cashflow_report(
         raise HTTPException(status_code=500, detail=f"Error generating CashFlow report: {str(e)}")
 
 @router.get("/excel/{filename}")
-async def serve_excel_file(filename: str):
+async def serve_excel_file(filename: str, download: bool = Query(False, description="Force download instead of inline display")):
     """
     Serve Excel files from the storage/reports directory.
     """
@@ -161,7 +161,16 @@ async def serve_excel_file(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"File not found: {filename}")
     
-    return FileResponse(path=file_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    # Set headers for download if requested
+    headers = {}
+    if download:
+        headers["Content-Disposition"] = f"attachment; filename={filename}"
+    
+    return FileResponse(
+        path=file_path, 
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers
+    )
 
 @router.get("/job/{job_id}")
 async def get_job_status(job_id: str, db: Session = Depends(get_db)):
