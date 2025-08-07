@@ -32,6 +32,9 @@ RUN mkdir -p database
 # Create tmp directory for Excel files
 RUN mkdir -p tmp
 
+# Create queue directory for job processing
+RUN mkdir -p tmp/queue
+
 # Create non-root user for security
 RUN adduser --disabled-password --gecos '' appuser \
     && chown -R appuser:appuser /app

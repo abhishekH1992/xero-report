@@ -11,6 +11,7 @@ from xero_python.accounting.api.accounting_api import empty
 from app.services.xero_aged_receivables_service import XeroAgedReceivablesService
 from app.services.xero_auth import XeroAuthService
 from app.services.xero_cashflow_service import XeroCashFlowService
+from app.services.queue_service import FileBasedQueueService
 from app.util.report_export import export_report_to_excel, generate_system_comments
 from app.util.report_helper import calculate_aging_bucket, generate_bucket_names, process_financial_item
 from app.util.export.report_cashflow_export import export_cashflow_to_excel, generate_cashflow_json_response
@@ -39,7 +40,7 @@ async def get_aged_receivables(
     connection_id: str = Query(None, description="Connection ID(s) - comma-separated for multiple connections"),
     is_response_only: int = Query(1, description="If 1, return response only without Excel generation"),
     format: int = Query(1, description="If 1, return table format; if 0, return JSON format"),
-    is_local: bool = Query(True, description="Generate report immediately (true) or queue (false)")
+    is_local: bool = Query(False, description="Generate report immediately (true) or queue (false)")
 ):
     """
     Custom Aged Receivables report: fetch all unpaid invoices from all connections, 
@@ -61,13 +62,30 @@ async def get_aged_receivables(
             format=format
         )
     else:
-        # TODO: Queue the job for background processing
-        # For now, return a placeholder response
+        # Queue the job for background processing
+        queue_service = FileBasedQueueService()
+        
+        job_data = {
+            "report_date": report_date,
+            "periods": periods,
+            "period_of": period_of,
+            "period_type": period_type,
+            "app_id": app_id,
+            "show_current": show_current,
+            "connection_id": connection_id
+        }
+        
+        job_id = queue_service.enqueue_job("aged_receivables_report", job_data)
+        
         return {
             "status": "queued",
-            "job_id": f"ar_report_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}",
+            "job_id": job_id,
             "message": "Report generation started. You will be notified when ready.",
-            "estimated_completion": "2-3 minutes"
+            "estimated_completion": "2-3 minutes",
+            "queue_info": {
+                "job_type": "aged_receivables_report",
+                "parameters": job_data
+            }
         }
 
 @router.get("/cashflow")
@@ -142,4 +160,26 @@ async def serve_excel_file(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"File not found: {filename}")
     
-    return FileResponse(path=file_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") 
+    return FileResponse(path=file_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+@router.get("/job/{job_id}")
+async def get_job_status(job_id: str):
+    """
+    Get the status of a queued job.
+    """
+    queue_service = FileBasedQueueService()
+    job_status = queue_service.get_job_status(job_id)
+    
+    if not job_status:
+        raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+    
+    return {
+        "job_id": job_id,
+        "status": job_status.get("status", "unknown"),
+        "created_at": job_status.get("created_at"),
+        "started_at": job_status.get("started_at"),
+        "completed_at": job_status.get("completed_at"),
+        "failed_at": job_status.get("failed_at"),
+        "error": job_status.get("error"),
+        "result": job_status.get("result")
+    } 
