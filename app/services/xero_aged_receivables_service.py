@@ -817,3 +817,491 @@ class XeroAgedReceivablesService:
             return cls(xero_auth_service)
         
         return _get_service
+
+    async def generate_aged_receivables_report(
+        self,
+        report_date: str = None,
+        periods: int = 4,
+        period_of: int = 1,
+        period_type: str = "Month",
+        app_id: Optional[int] = None,
+        show_current: bool = True,
+        connection_id: str = None,
+        is_response_only: int = 1,
+        format: int = 1
+    ) -> Dict[str, Any]:
+        """
+        Generate complete aged receivables report with Excel export
+        
+        Args:
+            report_date: Report date in YYYY-MM-DD format
+            periods: Number of aging periods
+            period_of: Duration of each period
+            period_type: Type of period (Day, Week, Month)
+            app_id: Optional Xero app ID (1-2) for multi-app support
+            show_current: Show Current bucket separately
+            connection_id: Connection ID(s) - comma-separated for multiple connections
+            is_response_only: If 1, return response only without Excel generation
+            format: If 1, return table format; if 0, return JSON format
+            
+        Returns:
+            Dict containing report data and Excel file path
+        """
+        from datetime import datetime
+        from app.util.report_helper import calculate_aging_bucket, generate_bucket_names, process_financial_item
+        from app.util.report_export import export_report_to_excel, generate_system_comments
+        import pandas as pd
+        
+        # Parse report_date or use today
+        if report_date:
+            try:
+                parsed_date = datetime.strptime(report_date, "%Y-%m-%d").date()
+                report_date_obj = parsed_date
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid report_date format. Use YYYY-MM-DD.")
+        else:
+            report_date_obj = datetime.utcnow().date()
+
+        is_future_date = report_date_obj > datetime.now().date()
+
+        # Get all active connections with app_id filtering
+        failed_connections = []  # Track failed connections from initial retrieval
+        connections = []
+        
+        if connection_id:
+            # Handle comma-separated connection IDs
+            connection_ids = [cid.strip() for cid in connection_id.split(',')]
+            for cid in connection_ids:
+                try:
+                    # Try to parse as integer for connection ID
+                    connection_id_int = int(cid)
+                    connection = self.xero_auth_service.get_connection_by_id(connection_id_int)
+                    if connection:
+                        connections.append(connection)
+                    else:
+                        # Connection not found
+                        failed_connections.append({
+                            "connection_id": cid,
+                            "tenant_id": None,
+                            "tenant_name": "Unknown",
+                            "app_id": None,
+                            "error": "Connection not found",
+                            "error_details": f"Connection with ID {cid} was not found in the database"
+                        })
+                except ValueError:
+                    # If not an integer, try as tenant_id
+                    try:
+                        connection = self.xero_auth_service.get_connection(cid)
+                        if connection:
+                            connections.append(connection)
+                        else:
+                            failed_connections.append({
+                                "connection_id": cid,
+                                "tenant_id": None,
+                                "tenant_name": "Unknown",
+                                "app_id": None,
+                                "error": "Connection not found",
+                                "error_details": f"Connection with ID {cid} was not found in the database"
+                            })
+                    except Exception as e:
+                        failed_connections.append({
+                            "connection_id": cid,
+                            "tenant_id": None,
+                            "tenant_name": "Unknown",
+                            "app_id": None,
+                            "error": str(e),
+                            "error_details": f"Failed to retrieve connection {cid}: {str(e)}"
+                        })
+                except Exception as e:
+                    # Log error but continue with other connections
+                    print(f"Error getting connection {cid}: {str(e)}")
+                    failed_connections.append({
+                        "connection_id": cid,
+                        "tenant_id": None,
+                        "tenant_name": "Unknown",
+                        "app_id": None,
+                        "error": str(e),
+                        "error_details": f"Failed to retrieve connection {cid}: {str(e)}"
+                    })
+        elif app_id:
+            connections = self.xero_auth_service.get_connections_by_app(app_id)
+        else:
+            connections = self.xero_auth_service.get_all_connections()
+        
+        if not connections and not failed_connections:
+            raise HTTPException(status_code=404, detail="No active Xero connections found")
+
+        # Generate bucket names based on configurable periods
+        bucket_names = generate_bucket_names(periods, period_type, show_current)
+        
+        all_report_data = {}
+        total_invoices = 0
+        
+        # Process each connection
+        for connection in connections:
+            try:
+                # Fetch data for this connection with app_id support
+                data = await self.get_aged_receivables_data(
+                    tenant_id=str(connection.tenant_id),
+                    report_date=report_date_obj,
+                    periods=periods,
+                    period_of=period_of,
+                    period_type=period_type,
+                    app_id=connection.app_id,
+                    is_future_date=is_future_date
+                )
+                
+                invoices = data["invoices"]
+                credit_notes = data["credit_notes"]
+                overpayments = data["overpayments"] 
+                
+                total_invoices += len(invoices)
+
+                # Process invoices
+                # First, group invoices by contact to handle multiple paid invoices per contact
+                contact_invoices = {}
+                
+                for invoice in invoices:
+                    contact_name = getattr(invoice.contact, 'name', 'Unknown Contact') if hasattr(invoice, 'contact') and invoice.contact else 'Unknown Contact'
+                    
+                    if contact_name not in contact_invoices:
+                        contact_invoices[contact_name] = []
+                    contact_invoices[contact_name].append(invoice)
+                
+                # Process each contact's invoices
+                for contact_name, contact_invoice_list in contact_invoices.items():
+                    # Create unique key for this contact
+                    business_type = getattr(connection, 'business_type', 'Commercial Property')
+                    key = f"{business_type}|{connection.tenant_name}|{contact_name}"
+                    
+                    if key not in all_report_data:
+                        all_report_data[key] = {
+                            "business_unit": business_type,
+                            "company": connection.tenant_name,
+                            "contact": contact_name,
+                            "invoice_details": {}
+                        }
+                        # Initialize all buckets
+                        for bucket_name in bucket_names:
+                            all_report_data[key][bucket_name] = 0.0
+                            all_report_data[key]["invoice_details"][bucket_name] = []
+                    
+                    # Process each invoice for this contact
+                    for invoice in contact_invoice_list:
+                        # Debug: Print invoice details
+                        invoice_number = getattr(invoice, 'invoice_number', 'Unknown')
+                        amount_due = getattr(invoice, 'amount_due', 0)
+                        print(f"[DEBUG] Processing invoice: {invoice_number}, Amount: {amount_due}")
+                        
+                        process_financial_item(
+                            item=invoice,
+                            report_date=report_date_obj,
+                            periods=periods,
+                            period_of=period_of,
+                            period_type=period_type,
+                            bucket_names=bucket_names,
+                            report=all_report_data,
+                            amount_field="amount_due",
+                            date_field="due_date",
+                            is_negative=getattr(invoice, 'is_negative', False),
+                            date_fallback=report_date_obj,
+                            connection_name=connection.tenant_name,
+                            business_type=business_type,
+                            item_type="invoice",
+                            show_current=show_current
+                        )
+
+                # Process credit notes (apply as negative values for credits)
+                for credit_note in credit_notes:
+                    process_financial_item(
+                        item=credit_note,
+                        report_date=report_date_obj,
+                        periods=periods,
+                        period_of=period_of,
+                        period_type=period_type,
+                        bucket_names=bucket_names,
+                        report=all_report_data,
+                        amount_field="remaining_credit",
+                        date_field="date",
+                        is_negative=True,
+                        date_fallback=report_date_obj,
+                        connection_name=connection.tenant_name,
+                        business_type=getattr(connection, 'business_type', 'Commercial Property'),
+                        item_type="credit_note",
+                        show_current=show_current
+                    )
+                    
+                # Process overpayments (apply as negative values for credits)
+                for overpayment in overpayments:
+                    process_financial_item(
+                        item=overpayment,
+                        report_date=report_date_obj,
+                        periods=periods,
+                        period_of=period_of,
+                        period_type=period_type,
+                        bucket_names=bucket_names,
+                        report=all_report_data,
+                        amount_field="remaining_credit",
+                        date_field="date",
+                        is_negative=True,
+                        date_fallback=report_date_obj,
+                        connection_name=connection.tenant_name,
+                        business_type=getattr(connection, 'business_type', 'Commercial Property'),
+                        item_type="overpayment",
+                        show_current=show_current
+                    )
+                    
+            except Exception as e:
+                import traceback
+                error_details = traceback.format_exc()
+                print(f"[XERO REPORT] Error processing connection {connection.tenant_name} (App {connection.app_id}): {str(e)}")
+                print(f"[XERO REPORT] Full error details: {error_details}")
+                
+                # Track failed connection
+                failed_connections.append({
+                    "connection_id": connection.id,
+                    "tenant_id": connection.tenant_id,
+                    "tenant_name": connection.tenant_name,
+                    "app_id": connection.app_id,
+                    "error": str(e),
+                    "error_details": error_details
+                })
+                
+                # Continue with other connections even if one fails
+                continue
+
+        # Prepare data for Excel export (only if is_response_only is 0)
+        excel_data = []
+        if is_response_only == 0:
+            for key, data in all_report_data.items():
+                # Calculate total amount first
+                total_amount = 0
+                for bucket_name in bucket_names:
+                    amount = data.get(bucket_name, 0)
+                    total_amount += amount
+                contact_name = data.get("contact", "Unknown")
+                row = {
+                    "Business Unit": data.get("business_unit", "Unknown"),
+                    "Company": data.get("company", "Unknown"),
+                    "Contact": contact_name
+                }
+                
+                # Add bucket amounts to row
+                for bucket_name in bucket_names:
+                    amount = data.get(bucket_name, 0)
+                    if bucket_name == "Current" and not show_current:
+                        # When show_current=False, combine Current and < 1 Month amounts
+                        current_amount = data.get("Current", 0)
+                        less_than_one_amount = data.get("< 1 Month", 0)
+                        row["Current"] = current_amount + less_than_one_amount
+                    elif bucket_name == "< 1 Month" and not show_current:
+                        # Skip the < 1 Month column when show_current=False since it's combined with Current
+                        continue
+                    else:
+                        row[bucket_name] = amount
+                
+                row["Total"] = total_amount
+                row["Comments"] = ""  # Add blank comments column
+                # Generate system comments
+                invoice_details = data.get("invoice_details", {})
+                
+                if not show_current:
+                    # When show_current=False, combine Current and < 1 Month invoice details
+                    combined_invoice_details = {}
+                    current_details = invoice_details.get("Current", [])
+                    less_than_one_details = invoice_details.get("< 1 Month", [])
+                    combined_invoice_details["Current"] = current_details + less_than_one_details
+                    
+                    # Add other bucket details
+                    for bucket_name in bucket_names:
+                        if bucket_name not in ["Current", "< 1 Month"]:
+                            combined_invoice_details[bucket_name] = invoice_details.get(bucket_name, [])
+                    
+                    # Create system bucket names for comments
+                    system_bucket_names = ["Current"] + [b for b in bucket_names if b not in ["Current", "< 1 Month"]]
+                    
+                    # Map display names to data keys for comments
+                    bucket_mapping = {}
+                    mapped_invoice_details = {}
+                    
+                    # Create the mapping for display names to data keys
+                    for bucket in system_bucket_names:
+                        if bucket == "Current":
+                            bucket_mapping["Current & < 1 Month"] = "Current"
+                        else:
+                            bucket_mapping[bucket] = bucket
+                    
+                    for display_name, data_key in bucket_mapping.items():
+                        if data_key in combined_invoice_details:
+                            mapped_invoice_details[display_name] = combined_invoice_details[data_key]
+                    
+                    system_comments = generate_system_comments(mapped_invoice_details, list(mapped_invoice_details.keys()))
+                else:
+                    system_comments = generate_system_comments(invoice_details, bucket_names)
+                row["System Comments"] = system_comments
+                # Only include rows that have non-zero amounts
+                if total_amount != 0:
+                    excel_data.append(row)
+
+        # Handle table format conversion if requested
+        if format == 1:
+            # Convert to pandas DataFrame for table format
+            table_data = []
+            for key, data in all_report_data.items():
+                # Calculate total amount first
+                total_amount = 0
+                for bucket_name in bucket_names:
+                    amount = data.get(bucket_name, 0)
+                    total_amount += amount
+                
+                contact_name = data.get("contact", "Unknown")
+                row = {
+                    "Business Unit": data.get("business_unit", "Unknown"),
+                    "Company": data.get("company", "Unknown"),
+                    "Contact": contact_name
+                }
+                
+                # Add bucket amounts to row
+                for bucket_name in bucket_names:
+                    amount = data.get(bucket_name, 0)
+                    if bucket_name == "Current" and not show_current:
+                        # When show_current=False, combine Current and < 1 Month amounts
+                        current_amount = data.get("Current", 0)
+                        less_than_one_amount = data.get("< 1 Month", 0)
+                        row["Current"] = current_amount + less_than_one_amount
+                    elif bucket_name == "< 1 Month" and not show_current:
+                        # Skip the < 1 Month column when show_current=False since it's combined with Current
+                        continue
+                    else:
+                        row[bucket_name] = amount
+                
+                row["Total"] = total_amount
+                row["Comments"] = ""  # Add blank comments column
+                # Generate system comments
+                invoice_details = data.get("invoice_details", {})
+                
+                if not show_current:
+                    # When show_current=False, combine Current and < 1 Month invoice details
+                    combined_invoice_details = {}
+                    current_details = invoice_details.get("Current", [])
+                    less_than_one_details = invoice_details.get("< 1 Month", [])
+                    combined_invoice_details["Current"] = current_details + less_than_one_details
+                    
+                    # Add other bucket details
+                    for bucket_name in bucket_names:
+                        if bucket_name not in ["Current", "< 1 Month"]:
+                            combined_invoice_details[bucket_name] = invoice_details.get(bucket_name, [])
+                    
+                    # Create system bucket names for comments
+                    system_bucket_names = ["Current"] + [b for b in bucket_names if b not in ["Current", "< 1 Month"]]
+                    
+                    # Map display names to data keys for comments
+                    bucket_mapping = {}
+                    mapped_invoice_details = {}
+                    
+                    # Create the mapping for display names to data keys
+                    for bucket in system_bucket_names:
+                        if bucket == "Current":
+                            bucket_mapping["Current & < 1 Month"] = "Current"
+                        else:
+                            bucket_mapping[bucket] = bucket
+                    
+                    for display_name, data_key in bucket_mapping.items():
+                        if data_key in combined_invoice_details:
+                            mapped_invoice_details[display_name] = combined_invoice_details[data_key]
+                    
+                    system_comments = generate_system_comments(mapped_invoice_details, list(mapped_invoice_details.keys()))
+                else:
+                    system_comments = generate_system_comments(invoice_details, bucket_names)
+                row["System Comments"] = system_comments
+                
+                table_data.append(row)
+            
+            # Create pandas DataFrame
+            df = pd.DataFrame(table_data)
+            
+            # Prepare response with table data
+            response_data = {
+                "format": "table",
+                "data": df.to_dict(orient="records"),
+                "columns": df.columns.tolist(),
+                "shape": df.shape,
+                "generated_at": report_date_obj.isoformat(),
+                "total_invoices": total_invoices,
+                "aging_config": {
+                    "periods": periods,
+                    "period_of": period_of,
+                    "period_type": period_type,
+                    "bucket_names": bucket_names
+                },
+                "app_filter": app_id,
+                "failed_connections": failed_connections,
+                "connection_summary": {
+                    "total_connections_attempted": len(connections) + len(failed_connections),
+                    "successful_connections": len(connections),
+                    "failed_connections_count": len(failed_connections),
+                    "success_rate": f"{(len(connections) / (len(connections) + len(failed_connections)) * 100):.1f}%" if (len(connections) + len(failed_connections)) > 0 else "0%"
+                }
+            }
+        else:
+            # Prepare JSON response
+            response_data = {
+                "aged_receivables": all_report_data,
+                "generated_at": report_date_obj.isoformat(),
+                "total_invoices": total_invoices,
+                "aging_config": {
+                    "periods": periods,
+                    "period_of": period_of,
+                    "period_type": period_type,
+                    "bucket_names": bucket_names
+                },
+                "app_filter": app_id,
+                "failed_connections": failed_connections,
+                "connection_summary": {
+                    "total_connections_attempted": len(connections) + len(failed_connections),
+                    "successful_connections": len(connections),
+                    "failed_connections_count": len(failed_connections),
+                    "success_rate": f"{(len(connections) / (len(connections) + len(failed_connections)) * 100):.1f}%" if (len(connections) + len(failed_connections)) > 0 else "0%"
+                }
+            }
+        
+        # Generate Excel file only if is_response_only is 0
+        if is_response_only == 0:
+            # Define columns for Excel export
+            excel_columns = []
+            for bucket in bucket_names:
+                if bucket == "Current" and not show_current:
+                    # Combine Current and < 1 Month in Excel header
+                    excel_columns.append({"header": "Current & < 1 Month", "key": bucket, "width": 15, "format": "currency"})
+                elif bucket == "< 1 Month" and not show_current:
+                    # Skip the < 1 Month column when show_current=False since it's combined with Current
+                    continue
+                else:
+                    excel_columns.append({"header": bucket, "key": bucket, "width": 15, "format": "currency"})
+            
+            columns = [
+                {"header": "Business Unit", "key": "Business Unit", "width": 20, "format": "text"},
+                {"header": "Company", "key": "Company", "width": 25, "format": "text"},
+                {"header": "Contact", "key": "Contact", "width": 30, "format": "text"},
+                *excel_columns,
+                {"header": "Total", "key": "Total", "width": 15, "format": "currency"},
+                {"header": "Comments", "key": "Comments", "width": 25, "format": "text"},
+                {"header": "System Comments", "key": "System Comments", "width": 60, "format": "text"}
+            ]
+            
+            # Export to Excel
+            excel_file_path = export_report_to_excel(
+                data=excel_data,
+                columns=columns,
+                filename="aged_receivables_report",
+                sheet_name="Aged Receivables",
+                title="Aged Receivables Summary",
+                report_date=f"As at {report_date_obj.strftime('%d %B %Y')}",
+                output_dir="tmp",
+                include_totals=True,
+                include_percentages=True
+            )
+            
+            response_data["excel_file"] = excel_file_path
+        
+        return response_data
