@@ -513,13 +513,24 @@ class XeroAgedReceivablesService:
                 
                 # Check if both dates are in the same month and year
                 if (issue_date.year == due_date.year and 
-                    issue_date.month == due_date.month):
+                    issue_date.month == due_date.month and
+                    issue_date <= report_date):
                     all_invoices.append(invoice)
 
         # Filter EARLY PAID invoices (issued after report date but paid before report date)
         # This handles the specific case where an invoice was issued in July but paid in June
         for invoice in early_paid_invoices:
             if invoice.type == "ACCREC":
+                # Get issue date first for the initial check
+                issue_date = getattr(invoice, 'date', None)
+                if issue_date and hasattr(issue_date, 'date'):
+                    issue_date = issue_date.date()
+                elif issue_date and isinstance(issue_date, str):
+                    try:
+                        issue_date = datetime.strptime(issue_date[:10], "%Y-%m-%d").date()
+                    except:
+                        issue_date = None
+                
                 # Skip if invoice was not issued after report date
                 if not issue_date or issue_date <= report_date:
                     continue
@@ -601,14 +612,20 @@ class XeroAgedReceivablesService:
                 
                 # Check if this invoice matches the scenario: issued after report date, paid before report date
                 # OR if it's an AUTHORISED invoice with amount_paid > 0 (indicating it was paid)
-                if ((issue_date and issue_date > report_date and 
-                     payment_date and payment_date <= report_date and 
-                     due_date and due_date >= report_date) or
-                    (getattr(invoice, 'status', '') == "AUTHORISED" and 
-                     amount_paid > 0 and 
-                     issue_date and issue_date > report_date and
-                     due_date and due_date >= report_date and
-                     has_payments_before_report_date)):  # Only include if payments were made before report date
+                condition1 = (issue_date and issue_date > report_date and 
+                             payment_date and payment_date <= report_date and 
+                             due_date and due_date >= report_date)
+                condition2 = (getattr(invoice, 'status', '') == "AUTHORISED" and 
+                             amount_paid > 0 and 
+                             issue_date and issue_date > report_date and
+                             due_date and due_date >= report_date and
+                             has_payments_before_report_date)
+                
+                if condition1 or condition2:  # Only include if payments were made before report date
+                    
+                    # Additional check: Ensure payment was actually made before report date
+                    if payment_date and payment_date > report_date:
+                        continue  # Skip if payment was made after report date
                     
                     # Create a modified invoice object for this scenario
                     modified_invoice = type("Item", (), {})()
@@ -957,7 +974,11 @@ class XeroAgedReceivablesService:
                 
                 invoices = data["invoices"]
                 credit_notes = data["credit_notes"]
-                overpayments = data["overpayments"] 
+                overpayments = data["overpayments"]
+
+                # print(f"[DEBUG] Overpayments: {overpayments}")
+                # print(f"[DEBUG] Credit notes: {credit_notes}")
+                # print(f"[DEBUG] Invoices: {invoices}")
                 
                 total_invoices += len(invoices)
 
@@ -992,11 +1013,6 @@ class XeroAgedReceivablesService:
                     
                     # Process each invoice for this contact
                     for invoice in contact_invoice_list:
-                        # Debug: Print invoice details
-                        invoice_number = getattr(invoice, 'invoice_number', 'Unknown')
-                        amount_due = getattr(invoice, 'amount_due', 0)
-                        print(f"[DEBUG] Processing invoice: {invoice_number}, Amount: {amount_due}")
-                        
                         process_financial_item(
                             item=invoice,
                             report_date=report_date_obj,
@@ -1149,42 +1165,67 @@ class XeroAgedReceivablesService:
 
         # Handle table format conversion if requested
         if format == 1:
-            # Convert to pandas DataFrame for table format
+            # Pre-calculate bucket mappings and system bucket names for performance
+            system_bucket_names = None
+            bucket_mapping = None
+            if not show_current:
+                system_bucket_names = ["Current"] + [b for b in bucket_names if b not in ["Current", "< 1 Month"]]
+                bucket_mapping = {}
+                for bucket in system_bucket_names:
+                    if bucket == "Current":
+                        bucket_mapping["Current & < 1 Month"] = "Current"
+                    else:
+                        bucket_mapping[bucket] = bucket
+            
+            # Convert to pandas DataFrame for table format - optimized for large datasets
             table_data = []
+            summary_stats = {
+                'total_outstanding': 0,
+                'companies': set(),
+                'contacts': set(),
+                'bucket_totals': {bucket: 0 for bucket in bucket_names}
+            }
+            
             for key, data in all_report_data.items():
-                # Calculate total amount first
-                total_amount = 0
-                for bucket_name in bucket_names:
-                    amount = data.get(bucket_name, 0)
-                    total_amount += amount
+                # Calculate total amount efficiently
+                total_amount = sum(data.get(bucket_name, 0) for bucket_name in bucket_names)
                 
-                contact_name = data.get("contact", "Unknown")
+                # Build row efficiently
                 row = {
                     "Business Unit": data.get("business_unit", "Unknown"),
                     "Company": data.get("company", "Unknown"),
-                    "Contact": contact_name
+                    "Contact": data.get("contact", "Unknown")
                 }
                 
-                # Add bucket amounts to row
+                # Add bucket amounts to row and update summary stats
                 for bucket_name in bucket_names:
                     amount = data.get(bucket_name, 0)
                     if bucket_name == "Current" and not show_current:
                         # When show_current=False, combine Current and < 1 Month amounts
                         current_amount = data.get("Current", 0)
                         less_than_one_amount = data.get("< 1 Month", 0)
-                        row["Current"] = current_amount + less_than_one_amount
+                        combined_amount = current_amount + less_than_one_amount
+                        row["Current"] = combined_amount
+                        summary_stats['bucket_totals']["Current"] += combined_amount
                     elif bucket_name == "< 1 Month" and not show_current:
                         # Skip the < 1 Month column when show_current=False since it's combined with Current
                         continue
                     else:
                         row[bucket_name] = amount
+                        summary_stats['bucket_totals'][bucket_name] += amount
                 
                 row["Total"] = total_amount
                 row["Comments"] = ""  # Add blank comments column
-                # Generate system comments
+                
+                # Update summary statistics
+                summary_stats['total_outstanding'] += total_amount
+                summary_stats['companies'].add(data.get("company", "Unknown"))
+                summary_stats['contacts'].add(data.get("contact", "Unknown"))
+                
+                # Generate system comments - optimized
                 invoice_details = data.get("invoice_details", {})
                 
-                if not show_current:
+                if not show_current and system_bucket_names and bucket_mapping:
                     # When show_current=False, combine Current and < 1 Month invoice details
                     combined_invoice_details = {}
                     current_details = invoice_details.get("Current", [])
@@ -1196,20 +1237,8 @@ class XeroAgedReceivablesService:
                         if bucket_name not in ["Current", "< 1 Month"]:
                             combined_invoice_details[bucket_name] = invoice_details.get(bucket_name, [])
                     
-                    # Create system bucket names for comments
-                    system_bucket_names = ["Current"] + [b for b in bucket_names if b not in ["Current", "< 1 Month"]]
-                    
                     # Map display names to data keys for comments
-                    bucket_mapping = {}
                     mapped_invoice_details = {}
-                    
-                    # Create the mapping for display names to data keys
-                    for bucket in system_bucket_names:
-                        if bucket == "Current":
-                            bucket_mapping["Current & < 1 Month"] = "Current"
-                        else:
-                            bucket_mapping[bucket] = bucket
-                    
                     for display_name, data_key in bucket_mapping.items():
                         if data_key in combined_invoice_details:
                             mapped_invoice_details[display_name] = combined_invoice_details[data_key]
@@ -1224,28 +1253,60 @@ class XeroAgedReceivablesService:
             # Create pandas DataFrame
             df = pd.DataFrame(table_data)
             
-            # Prepare response with table data
+            # Use pre-calculated summary statistics for better performance
+            total_outstanding = summary_stats['total_outstanding']
+            companies_count = len(summary_stats['companies'])
+            contacts_count = len(summary_stats['contacts'])
+            
+            # Find highest aging bucket using pre-calculated totals
+            highest_aging_bucket = None
+            highest_amount = 0
+            for bucket, total in summary_stats['bucket_totals'].items():
+                if total > highest_amount:
+                    highest_amount = total
+                    highest_aging_bucket = bucket
+            
+            # Calculate percentage distribution using pre-calculated totals
+            aging_distribution = {}
+            for bucket, total in summary_stats['bucket_totals'].items():
+                percentage = (total / total_outstanding * 100) if total_outstanding > 0 else 0
+                aging_distribution[bucket] = {
+                    "amount": round(total, 2),
+                    "percentage": round(percentage, 1)
+                }
+            
+            # Prepare response with enhanced table data for Dify
             response_data = {
                 "format": "table",
                 "data": df.to_dict(orient="records"),
                 "columns": df.columns.tolist(),
                 "shape": df.shape,
                 "generated_at": report_date_obj.isoformat(),
+                "report_date": report_date_obj.strftime("%d %B %Y"),
                 "total_invoices": total_invoices,
-                "aging_config": {
-                    "periods": periods,
-                    "period_of": period_of,
-                    "period_type": period_type,
-                    "bucket_names": bucket_names
+                "summary": {
+                    "total_outstanding": round(total_outstanding, 2),
+                    "companies_count": companies_count,
+                    "contacts_count": contacts_count,
+                    "highest_aging_bucket": highest_aging_bucket,
+                    "highest_aging_amount": round(highest_amount, 2) if highest_aging_bucket else 0,
+                    "aging_distribution": aging_distribution
                 },
-                "app_filter": app_id,
-                "failed_connections": failed_connections,
-                "connection_summary": {
-                    "total_connections_attempted": len(connections) + len(failed_connections),
-                    "successful_connections": len(connections),
-                    "failed_connections_count": len(failed_connections),
-                    "success_rate": f"{(len(connections) / (len(connections) + len(failed_connections)) * 100):.1f}%" if (len(connections) + len(failed_connections)) > 0 else "0%"
-                }
+                # "aging_config": {
+                #     "periods": periods,
+                #     "period_of": period_of,
+                #     "period_type": period_type,
+                #     "bucket_names": bucket_names,
+                #     "show_current": show_current
+                # },
+                # "app_filter": app_id,
+                # "failed_connections": failed_connections,
+                # "connection_summary": {
+                #     "total_connections_attempted": len(connections) + len(failed_connections),
+                #     "successful_connections": len(connections),
+                #     "failed_connections_count": len(failed_connections),
+                #     "success_rate": f"{(len(connections) / (len(connections) + len(failed_connections)) * 100):.1f}%" if (len(connections) + len(failed_connections)) > 0 else "0%"
+                # }
             }
         else:
             # Prepare JSON response
@@ -1253,13 +1314,6 @@ class XeroAgedReceivablesService:
                 "aged_receivables": all_report_data,
                 "generated_at": report_date_obj.isoformat(),
                 "total_invoices": total_invoices,
-                "aging_config": {
-                    "periods": periods,
-                    "period_of": period_of,
-                    "period_type": period_type,
-                    "bucket_names": bucket_names
-                },
-                "app_filter": app_id,
                 "failed_connections": failed_connections,
                 "connection_summary": {
                     "total_connections_attempted": len(connections) + len(failed_connections),
