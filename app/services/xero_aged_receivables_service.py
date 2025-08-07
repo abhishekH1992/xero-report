@@ -1295,7 +1295,7 @@ class XeroAgedReceivablesService:
         else:
             # Prepare JSON response
             response_data = {
-                "aged_receivables": all_report_data,
+                # "aged_receivables": all_report_data,
                 "generated_at": report_date_obj.isoformat(),
                 "total_invoices": total_invoices,
                 "failed_connections": failed_connections,
