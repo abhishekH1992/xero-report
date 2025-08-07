@@ -7,7 +7,6 @@ from typing import Dict, Any
 
 from app.database.database import get_db
 from app.database.repository import XeroAuthRepository
-from app.services.queue_service import FileBasedQueueService
 from app.services.db_queue_service import DatabaseQueueService
 from app.services.xero_aged_receivables_service import XeroAgedReceivablesService
 from app.services.webhook_service import WebhookService

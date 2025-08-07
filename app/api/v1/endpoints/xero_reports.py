@@ -12,7 +12,6 @@ from app.database.database import get_db
 from app.services.xero_aged_receivables_service import XeroAgedReceivablesService
 from app.services.xero_auth import XeroAuthService
 from app.services.xero_cashflow_service import XeroCashFlowService
-from app.services.queue_service import FileBasedQueueService
 from app.services.db_queue_service import DatabaseQueueService
 from app.util.report_export import export_report_to_excel, generate_system_comments
 from app.util.report_helper import calculate_aging_bucket, generate_bucket_names, process_financial_item
