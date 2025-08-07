@@ -40,3 +40,8 @@ primary_region = 'syd'
   memory = '512mb'
   cpu_kind = 'shared'
   cpus = 1
+
+[[mounts]]
+  source = 'reports_volume'
+  destination = '/app/storage/reports'
+  processes   = ["app"]

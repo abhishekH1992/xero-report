@@ -8,10 +8,12 @@ import os
 
 from xero_python.accounting.api.accounting_api import empty
 
+from app.database.database import get_db
 from app.services.xero_aged_receivables_service import XeroAgedReceivablesService
 from app.services.xero_auth import XeroAuthService
 from app.services.xero_cashflow_service import XeroCashFlowService
 from app.services.queue_service import FileBasedQueueService
+from app.services.db_queue_service import DatabaseQueueService
 from app.util.report_export import export_report_to_excel, generate_system_comments
 from app.util.report_helper import calculate_aging_bucket, generate_bucket_names, process_financial_item
 from app.util.export.report_cashflow_export import export_cashflow_to_excel, generate_cashflow_json_response
@@ -40,7 +42,8 @@ async def get_aged_receivables(
     connection_id: str = Query(None, description="Connection ID(s) - comma-separated for multiple connections"),
     is_response_only: int = Query(1, description="If 1, return response only without Excel generation"),
     format: int = Query(1, description="If 1, return table format; if 0, return JSON format"),
-    is_local: bool = Query(False, description="Generate report immediately (true) or queue (false)")
+    is_local: bool = Query(False, description="Generate report immediately (true) or queue (false)"),
+    db: Session = Depends(get_db)
 ):
     """
     Custom Aged Receivables report: fetch all unpaid invoices from all connections, 
@@ -62,8 +65,8 @@ async def get_aged_receivables(
             format=format
         )
     else:
-        # Queue the job for background processing
-        queue_service = FileBasedQueueService()
+        # Queue the job for background processing using database
+        queue_service = DatabaseQueueService(db)
         
         job_data = {
             "report_date": report_date,
@@ -154,20 +157,20 @@ async def get_cashflow_report(
 @router.get("/excel/{filename}")
 async def serve_excel_file(filename: str):
     """
-    Serve Excel files from the tmp directory.
+    Serve Excel files from the storage/reports directory.
     """
-    file_path = os.path.join("tmp", filename)
+    file_path = os.path.join("storage/reports", filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"File not found: {filename}")
     
     return FileResponse(path=file_path, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 @router.get("/job/{job_id}")
-async def get_job_status(job_id: str):
+async def get_job_status(job_id: str, db: Session = Depends(get_db)):
     """
     Get the status of a queued job.
     """
-    queue_service = FileBasedQueueService()
+    queue_service = DatabaseQueueService(db)
     job_status = queue_service.get_job_status(job_id)
     
     if not job_status:

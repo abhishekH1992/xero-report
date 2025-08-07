@@ -8,7 +8,7 @@ from pathlib import Path
 class FileBasedQueueService:
     """Simple file-based queue for local development and production"""
     
-    def __init__(self, queue_dir: str = "tmp/queue"):
+    def __init__(self, queue_dir: str = "storage/queue"):
         self.queue_dir = Path(queue_dir)
         self.queue_dir.mkdir(parents=True, exist_ok=True)
     

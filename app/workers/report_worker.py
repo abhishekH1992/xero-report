@@ -8,6 +8,7 @@ from typing import Dict, Any
 from app.database.database import get_db
 from app.database.repository import XeroAuthRepository
 from app.services.queue_service import FileBasedQueueService
+from app.services.db_queue_service import DatabaseQueueService
 from app.services.xero_aged_receivables_service import XeroAgedReceivablesService
 from app.services.webhook_service import WebhookService
 from app.services.xero_auth import XeroAuthService
@@ -16,15 +17,27 @@ class ReportWorker:
     """Background worker for processing report generation jobs"""
     
     def __init__(self):
-        self.queue_service = FileBasedQueueService()
+        # Initialize database and repository with explicit database URL
+        # Use the same database configuration as the API
+        from app.database.database import SessionLocal, SQLALCHEMY_DATABASE_URL
         
-        # Initialize database and repository
-        db = next(get_db())
+        print("[WORKER] Initializing worker...")
+        print(f"[WORKER] DATABASE_URL: {os.getenv('DATABASE_URL', 'NOT SET')}")
+        print(f"[WORKER] SQLALCHEMY_DATABASE_URL: {SQLALCHEMY_DATABASE_URL}")
+        
+        db = SessionLocal()
+        print("[WORKER] Database session created")
+        
         repo = XeroAuthRepository(db)
         self.xero_auth_service = XeroAuthService(repo)
         
+        # Use database queue service instead of file-based
+        self.queue_service = DatabaseQueueService(db)
+        print("[WORKER] Queue service initialized")
+        
         self.aged_receivables_service = XeroAgedReceivablesService(self.xero_auth_service)
         self.webhook_service = WebhookService()
+        print("[WORKER] Worker initialization complete")
     
     async def process_job(self, job: Dict[str, Any]):
         """Process a single job"""
@@ -114,11 +127,14 @@ class ReportWorker:
         while True:
             try:
                 # Get next job from queue
+                print("[WORKER] Checking for jobs...")
                 job = self.queue_service.dequeue_job()
                 
                 if job:
+                    print(f"[WORKER] Found job: {job['id']}")
                     await self.process_job(job)
                 else:
+                    print("[WORKER] No jobs available, waiting...")
                     # No jobs available, wait a bit
                     await asyncio.sleep(5)
                     
@@ -127,6 +143,8 @@ class ReportWorker:
                 break
             except Exception as e:
                 print(f"[WORKER] Error in main loop: {e}")
+                import traceback
+                print(f"[WORKER] Full traceback: {traceback.format_exc()}")
                 await asyncio.sleep(10)
 
 async def main():

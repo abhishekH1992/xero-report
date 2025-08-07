@@ -1340,7 +1340,7 @@ class XeroAgedReceivablesService:
                     sheet_name="Aged Receivables",
                     title="Aged Receivables Summary",
                     report_date=f"As at {report_date_obj.strftime('%d %B %Y')}",
-                    output_dir="tmp",
+                    output_dir="storage/reports",
                     include_totals=True,
                     include_percentages=True
                 )
