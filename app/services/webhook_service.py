@@ -17,17 +17,17 @@ class WebhookService:
         
         # Prepare headers with JWT token if available
         headers = {}
-        if self.jwt_token:
+        if self.jwt_token and self.jwt_token != "test_jwt_token_for_local_dev":
             headers["Authorization"] = f"Bearer {self.jwt_token}"
             print("[WEBHOOK] Using JWT authentication")
         else:
-            print("[WEBHOOK] No JWT token configured, sending without authentication")
+            print("[WEBHOOK] No JWT token configured or using test token, sending without authentication")
         
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(
+                # Use GET request since n8n webhook is configured for GET
+                response = await client.get(
                     self.webhook_url,
-                    json=data,
                     headers=headers,
                     timeout=30.0
                 )
