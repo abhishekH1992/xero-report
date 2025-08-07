@@ -1215,7 +1215,6 @@ class XeroAgedReceivablesService:
                         summary_stats['bucket_totals'][bucket_name] += amount
                 
                 row["Total"] = total_amount
-                row["Comments"] = ""  # Add blank comments column
                 
                 # Update summary statistics
                 summary_stats['total_outstanding'] += total_amount
@@ -1246,7 +1245,7 @@ class XeroAgedReceivablesService:
                     system_comments = generate_system_comments(mapped_invoice_details, list(mapped_invoice_details.keys()))
                 else:
                     system_comments = generate_system_comments(invoice_details, bucket_names)
-                row["System Comments"] = system_comments
+                row["Invoice Breakdown"] = system_comments ## Changed name from System comments to Invoice Breakdown for Dify clarity
                 
                 table_data.append(row)
             
@@ -1292,21 +1291,6 @@ class XeroAgedReceivablesService:
                     "highest_aging_amount": round(highest_amount, 2) if highest_aging_bucket else 0,
                     "aging_distribution": aging_distribution
                 },
-                # "aging_config": {
-                #     "periods": periods,
-                #     "period_of": period_of,
-                #     "period_type": period_type,
-                #     "bucket_names": bucket_names,
-                #     "show_current": show_current
-                # },
-                # "app_filter": app_id,
-                # "failed_connections": failed_connections,
-                # "connection_summary": {
-                #     "total_connections_attempted": len(connections) + len(failed_connections),
-                #     "successful_connections": len(connections),
-                #     "failed_connections_count": len(failed_connections),
-                #     "success_rate": f"{(len(connections) / (len(connections) + len(failed_connections)) * 100):.1f}%" if (len(connections) + len(failed_connections)) > 0 else "0%"
-                # }
             }
         else:
             # Prepare JSON response
