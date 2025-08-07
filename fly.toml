@@ -1,4 +1,4 @@
-# fly.toml app configuration file generated for finance-assistant-api on 2025-08-06T14:51:35+12:00
+# fly.toml app configuration file generated for finance-assistant-api on 2025-08-08T11:10:03+12:00
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
@@ -15,6 +15,11 @@ primary_region = 'syd'
 [processes]
   app = 'gunicorn app.main:app --bind 0.0.0.0:8000 --workers 1 --worker-class uvicorn.workers.UvicornWorker'
   worker = 'python -m app.workers.report_worker'
+
+[[mounts]]
+  source = 'reports_volume'
+  destination = '/app/storage/reports'
+  processes = ['app', 'worker']
 
 [http_service]
   internal_port = 8000
@@ -41,7 +46,8 @@ primary_region = 'syd'
   cpu_kind = 'shared'
   cpus = 1
 
-[[mounts]]
-  source = 'reports_volume'
-  destination = '/app/storage/reports'
-  processes   = ["app"]
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1
+  processes = ['worker']

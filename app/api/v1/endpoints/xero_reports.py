@@ -83,7 +83,6 @@ async def get_aged_receivables(
             "status": "queued",
             "job_id": job_id,
             "message": "Report generation started. You will be notified when ready.",
-            "estimated_completion": "2-3 minutes",
             "queue_info": {
                 "job_type": "aged_receivables_report",
                 "parameters": job_data

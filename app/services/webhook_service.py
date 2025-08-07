@@ -16,7 +16,9 @@ class WebhookService:
             return
         
         # Prepare headers with JWT token if available
-        headers = {}
+        headers = {
+            "Content-Type": "application/json"
+        }
         if self.jwt_token and self.jwt_token != "test_jwt_token_for_local_dev":
             headers["Authorization"] = f"Bearer {self.jwt_token}"
             print("[WEBHOOK] Using JWT authentication")
@@ -25,10 +27,11 @@ class WebhookService:
         
         try:
             async with httpx.AsyncClient() as client:
-                # Use GET request since n8n webhook is configured for GET
-                response = await client.get(
+                # Send POST request with data in body
+                response = await client.post(
                     self.webhook_url,
                     headers=headers,
+                    json=data,  # Send data as JSON in request body
                     timeout=30.0
                 )
                 
@@ -47,6 +50,7 @@ class WebhookService:
             "report_type": report_type,
             "report_date": report_date,
             "file_path": file_path,
+            "file_url": f"https://finance-assistant-api.fly.dev/api/v1/reports/excel/{os.path.basename(file_path)}",
             "file_size": os.path.getsize(file_path) if os.path.exists(file_path) else 0,
             "status": "completed",
             "message": f"{report_type.replace('_', ' ').title()} report generated successfully"
