@@ -520,6 +520,9 @@ class XeroAgedReceivablesService:
         # This handles the specific case where an invoice was issued in July but paid in June
         for invoice in early_paid_invoices:
             if invoice.type == "ACCREC":
+                # Skip if invoice was not issued after report date
+                if not issue_date or issue_date <= report_date:
+                    continue
                 # Get payment date from the invoice
                 payment_date = getattr(invoice, 'fully_paid_on_date', None)
                 payments = getattr(invoice, 'payments', [])
@@ -604,7 +607,8 @@ class XeroAgedReceivablesService:
                     (getattr(invoice, 'status', '') == "AUTHORISED" and 
                      amount_paid > 0 and 
                      issue_date and issue_date > report_date and
-                     due_date and due_date >= report_date)):
+                     due_date and due_date >= report_date and
+                     has_payments_before_report_date)):  # Only include if payments were made before report date
                     
                     # Create a modified invoice object for this scenario
                     modified_invoice = type("Item", (), {})()
