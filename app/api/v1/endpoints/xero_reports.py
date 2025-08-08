@@ -130,12 +130,12 @@ async def get_cashflow_report(
         from app.util.report_helper import calculate_date_ranges
         date_ranges = calculate_date_ranges(report_date_str, period, period_of)
         
-        # Export to Excel
+        # Export to Excel - use absolute path to ensure both app and worker use same location
         excel_file_path = export_cashflow_to_excel(
             cashflow_data=cashflow_data,
             date_ranges=date_ranges,
             filename="cashflow_report",
-            output_dir="tmp",
+            output_dir="/app/storage/reports",
             report_date=report_date_str
         )
 
@@ -157,9 +157,14 @@ async def serve_excel_file(filename: str, download: bool = Query(False, descript
     """
     Serve Excel files from the storage/reports directory.
     """
-    file_path = os.path.join("storage/reports", filename)
+    # Use absolute path to ensure we find the files in the Docker container
+    file_path = os.path.join("/app/storage/reports", filename)
 
     print(f"[SERVE_EXCEL_FILE] File path: {file_path}")
+    print(f"[SERVE_EXCEL_FILE] File exists: {os.path.exists(file_path)}")
+    print(f"[SERVE_EXCEL_FILE] Current working directory: {os.getcwd()}")
+    print(f"[SERVE_EXCEL_FILE] Directory contents: {os.listdir('/app/storage/reports') if os.path.exists('/app/storage/reports') else 'Directory not found'}")
+    
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"File not found: {filename}")
     

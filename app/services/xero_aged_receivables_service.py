@@ -1332,7 +1332,7 @@ class XeroAgedReceivablesService:
                     {"header": "System Comments", "key": "System Comments", "width": 60, "format": "text"}
                 ]
                 
-                # Export to Excel
+                # Export to Excel - use absolute path to ensure both app and worker use same location
                 excel_file_path = export_report_to_excel(
                     data=excel_data,
                     columns=columns,
@@ -1340,7 +1340,7 @@ class XeroAgedReceivablesService:
                     sheet_name="Aged Receivables",
                     title="Aged Receivables Summary",
                     report_date=f"As at {report_date_obj.strftime('%d %B %Y')}",
-                    output_dir="storage/reports",
+                    output_dir="/app/storage/reports",
                     include_totals=True,
                     include_percentages=True
                 )
