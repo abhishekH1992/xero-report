@@ -80,13 +80,15 @@ async def get_aged_receivables(
         job_id = queue_service.enqueue_job("aged_receivables_report", job_data)
         
         return {
-            "status": "queued",
-            "job_id": job_id,
-            "message": "Report generation started. You will be notified when ready.",
-            "queue_info": {
-                "job_type": "aged_receivables_report",
-                "parameters": job_data
-            }
+            "format": "table",
+            "data": [
+                {
+                    "status": "queued",
+                    "job_id": job_id,
+                }
+            ],
+            "columns": ["status", "job_id"],
+            "shape": [1, 2],
         }
 
 @router.get("/cashflow")
@@ -191,12 +193,20 @@ async def get_job_status(job_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
     
     return {
-        "job_id": job_id,
-        "status": job_status.get("status", "unknown"),
-        "created_at": job_status.get("created_at"),
-        "started_at": job_status.get("started_at"),
-        "completed_at": job_status.get("completed_at"),
-        "failed_at": job_status.get("failed_at"),
-        "error": job_status.get("error"),
-        "result": job_status.get("result")
+        "format": "table",
+        "data": [
+            {
+                "job_id": job_id,
+                "status": job_status.get("status", "unknown"),
+                "created_at": job_status.get("created_at"),
+                "started_at": job_status.get("started_at"),
+                "completed_at": job_status.get("completed_at"),
+                "failed_at": job_status.get("failed_at"),
+                "error": job_status.get("error"),
+                "result": job_status.get("result")
+            }
+        ],
+        "columns": ["job_id", "status", "created_at", "started_at", "completed_at", "failed_at", "error", "result"],
+        "shape": [1, 8],
+        "generated_at": datetime.utcnow().isoformat()
     } 
