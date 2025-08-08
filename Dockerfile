@@ -29,6 +29,13 @@ COPY . .
 # Create database directory
 RUN mkdir -p database
 
+# Create storage directories for Excel files and queue
+RUN mkdir -p storage/reports
+RUN mkdir -p storage/queue
+
+# Keep tmp directory for backward compatibility
+RUN mkdir -p tmp
+
 # Create non-root user for security
 RUN adduser --disabled-password --gecos '' appuser \
     && chown -R appuser:appuser /app

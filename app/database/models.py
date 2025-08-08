@@ -106,4 +106,24 @@ class XeroApiLog(Base):
     connection = relationship("XeroConnection", back_populates="api_logs")
     
     def __repr__(self):
-        return f"<XeroApiLog(endpoint={self.endpoint}, status_code={self.status_code})>" 
+        return f"<XeroApiLog(endpoint={self.endpoint}, status_code={self.status_code})>"
+
+
+class ReportQueue(Base):
+    """Database model for queuing report generation jobs"""
+    __tablename__ = "report_queue"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(String(255), unique=True, index=True, nullable=False)
+    job_type = Column(String(100), nullable=False)  # aged_receivables_report, cashflow_report, etc.
+    status = Column(String(50), nullable=False, default="pending")  # pending, processing, completed, failed
+    job_data = Column(Text, nullable=False)  # JSON string of job parameters
+    result_data = Column(Text, nullable=True)  # JSON string of job results
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    failed_at = Column(DateTime, nullable=True)
+    
+    def __repr__(self):
+        return f"<ReportQueue(job_id={self.job_id}, type={self.job_type}, status={self.status})>" 

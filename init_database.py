@@ -4,45 +4,40 @@ Database initialization script for Finance Assistant
 Run this script to create the database and tables
 """
 
-import sys
 import os
+import sys
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 
 # Add the app directory to the Python path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'app'))
 
-from app.database.database import init_db, engine
-from app.database.models import Base
-from pathlib import Path
-from sqlalchemy import text
+from app.database.database import get_db, engine
+from app.database.models import Base, XeroAuthState, XeroConnection, XeroTokenHistory, XeroApiLog, ReportQueue
 
-def main():
-    """Initialize the database"""
-    print("🚀 Initializing Finance Assistant Database...")
+def init_database():
+    """Initialize the database with all tables"""
+    print("Initializing database...")
     
-    # Create database directory if it doesn't exist
-    db_dir = Path("database")
-    db_dir.mkdir(exist_ok=True)
-    print(f"📁 Database directory: {db_dir.absolute()}")
+    # Use the engine from database.py
     
-    try:
+    # Create all tables
+    Base.metadata.create_all(bind=engine)
+    
+    print("Database tables created successfully!")
+    
+    # Verify tables exist (SQLite compatible)
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
         
-        # Create all tables with new schema
-        print("🏗️  Creating new tables with updated schema...")
-        Base.metadata.create_all(bind=engine)
-        print("✅ Database tables created successfully!")
+        tables = [row[0] for row in result]
+        print(f"Available tables: {tables}")
         
-        # Test database connection
-        with engine.connect() as conn:
-            result = conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
-            tables = [row[0] for row in result]
-            print(f"📋 Created tables: {', '.join(tables)}")
-        
-        print("\n🎉 Database initialization completed successfully!")
-        print("You can now start the application with: python -m app.main")
-        
-    except Exception as e:
-        print(f"❌ Error initializing database: {e}")
-        sys.exit(1)
+        # Check if report_queue table exists
+        if 'report_queue' in tables:
+            print("✅ report_queue table created successfully")
+        else:
+            print("❌ report_queue table not found")
 
 if __name__ == "__main__":
-    main() 
+    init_database() 

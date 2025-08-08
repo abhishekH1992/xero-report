@@ -373,3 +373,266 @@ Provides overall statistics:
 - **JSON vs Excel**: Maintains separate buckets in JSON but can combine in Excel
 - **Data Integrity**: Ensures totals remain accurate when combining buckets
 - **Backward Compatibility**: Default behavior maintains separate buckets
+
+---
+
+## Queue-Based Report Generation Plan
+
+### Overview
+
+This plan implements a queue-based system for Aged Receivables report generation using Fly.io's native process management capabilities. The system will support both immediate (local) and queued (background) report generation.
+
+### Architecture
+
+```
+Dify Agent → API → Queue → Worker → tmp/ folder → n8n Webhook → Email
+```
+
+### Implementation Plan
+
+#### Phase 1: Infrastructure Setup (Day 1)
+
+**1.1 Fly.io Configuration**
+- Update `fly.toml` to add worker process
+- Configure process management for app and worker separation
+
+**1.2 Queue System Setup**
+- Implement simple file-based queue system
+- Create queue service for job management
+- Add Redis as optional alternative
+
+**1.3 Worker Process**
+- Create background worker for report processing
+- Implement job dequeuing and processing logic
+- Add error handling and retry mechanisms
+
+#### Phase 2: API Modifications (Day 2)
+
+**2.1 Enhanced API Endpoint**
+- Add `is_local` parameter to existing endpoint
+- Maintain backward compatibility
+- Implement queue job creation for `is_local=false`
+
+**2.2 Service Layer Refactoring**
+- Move AR logic from `xero_reports.py` to `xero_aged_receivables_service.py`
+- Create unified service interface for both local and queued processing
+- Add progress tracking and status updates
+
+**2.3 File Management**
+- Implement tmp folder storage for both local and queued reports
+- Add file cleanup mechanisms
+- Create file download endpoint
+
+#### Phase 3: Integration & Testing (Day 3)
+
+**3.1 Webhook Integration**
+- Implement n8n webhook triggering
+- Add email notification system
+- Create notification templates
+
+**3.2 Testing & Monitoring**
+- Test both local and queued workflows
+- Implement logging and monitoring
+- Add performance metrics
+
+### Technical Implementation Details
+
+#### 1. Fly.io Process Configuration
+
+```toml
+# fly.toml
+[processes]
+  app = ""
+  worker = "python -m app.workers.report_worker"
+
+[http_service]
+  processes = ["app"]
+```
+
+#### 2. Queue System
+
+```python
+# app/services/queue_service.py
+class SimpleQueueService:
+    def __init__(self, queue_dir="tmp/queue"):
+        self.queue_dir = queue_dir
+        os.makedirs(queue_dir, exist_ok=True)
+    
+    async def enqueue_report_job(self, report_params: dict):
+        job_id = f"ar_report_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
+        job_file = os.path.join(self.queue_dir, f"{job_id}.json")
+        
+        job_data = {
+            "job_id": job_id,
+            "type": "aged_receivables",
+            "params": report_params,
+            "created_at": datetime.now().isoformat(),
+            "status": "pending"
+        }
+        
+        with open(job_file, 'w') as f:
+            json.dump(job_data, f)
+        
+        return job_id
+```
+
+#### 3. Worker Process
+
+```python
+# app/workers/report_worker.py
+class AgedReceivablesWorker:
+    def __init__(self):
+        self.queue_service = SimpleQueueService()
+        self.ar_service = XeroAgedReceivablesService()
+        self.webhook_service = WebhookService()
+    
+    async def process_ar_report(self, job_data: dict):
+        try:
+            # Generate report
+            excel_file_path = await self.ar_service.generate_report(job_data["params"])
+            
+            # Trigger webhook with file path
+            await self.webhook_service.trigger_report_complete(
+                file_path=excel_file_path,
+                report_type="aged_receivables",
+                job_id=job_data["job_id"]
+            )
+            
+        except Exception as e:
+            # Handle errors and retries
+            await self.handle_job_error(job_data, str(e))
+```
+
+#### 4. Enhanced API Endpoint
+
+```python
+# app/api/v1/endpoints/xero_reports.py
+@router.get("/aged-receivables")
+async def get_aged_receivables(
+    # ... existing parameters ...
+    is_local: bool = Query(False, description="Generate report immediately (true) or queue (false)")
+):
+    if is_local:
+        # Existing synchronous logic
+        return await generate_report_sync(params)
+    else:
+        # Queue the job
+        job_id = await queue_service.enqueue_report_job(params)
+        return {
+            "status": "queued",
+            "job_id": job_id,
+            "message": "Report generation started. You will be notified when ready."
+        }
+```
+
+#### 5. Webhook Service
+
+```python
+# app/services/webhook_service.py
+class WebhookService:
+    async def trigger_report_complete(self, file_path: str, report_type: str, job_id: str):
+        webhook_url = os.getenv("N8N_WEBHOOK_URL")
+        
+        payload = {
+            "file_path": file_path,
+            "report_type": report_type,
+            "job_id": job_id,
+            "generated_at": datetime.now().isoformat()
+        }
+        
+        async with httpx.AsyncClient() as client:
+            await client.post(webhook_url, json=payload)
+```
+
+### Environment Variables
+
+```env
+# Queue Configuration
+QUEUE_DIR=tmp/queue
+
+# n8n Webhook
+N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/report-complete
+
+# Email Configuration (for n8n)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+```
+
+### File Structure
+
+```
+app/
+├── workers/
+│   ├── __init__.py
+│   └── report_worker.py
+├── services/
+│   ├── queue_service.py
+│   └── webhook_service.py
+└── api/v1/endpoints/
+    └── xero_reports.py (modified)
+
+tmp/
+├── queue/          # Queue jobs
+├── reports/        # Generated reports
+└── .gitkeep
+```
+
+### API Response Examples
+
+#### Queued Report Request
+```bash
+GET /api/v1/reports/aged-receivables?is_local=false&report_date=2024-06-30
+```
+
+#### Queued Response
+```json
+{
+  "status": "queued",
+  "job_id": "ar_report_20240806_143022_123456",
+  "message": "Report generation started. You will be notified when ready.",
+  "estimated_completion": "2-3 minutes"
+}
+```
+
+#### Local Report Request
+```bash
+GET /api/v1/reports/aged-receivables?is_local=true&report_date=2024-06-30
+```
+
+#### Local Response (existing format)
+```json
+{
+  "aged_receivables": { ... },
+  "excel_file": "tmp/aged_receivables_report_20240806_143022.xlsx",
+  "generated_at": "2024-06-30"
+}
+```
+
+### Benefits
+
+1. **Scalability**: Worker processes can be scaled independently
+2. **Reliability**: Failed jobs can be retried automatically
+3. **User Experience**: Immediate response for queued requests
+4. **Resource Management**: Heavy processing moved to background
+5. **Monitoring**: Separate logs for web and worker processes
+6. **Flexibility**: Support for both immediate and queued processing
+
+### Deployment Steps
+
+1. **Update fly.toml** with worker process configuration
+2. **Deploy application** with new process structure
+3. **Scale workers** based on expected load: `fly scale count worker=2`
+4. **Monitor logs**: `fly logs --process worker`
+5. **Test both workflows** (local and queued)
+
+### Monitoring & Maintenance
+
+- **Queue Monitoring**: Check queue size and processing times
+- **Worker Health**: Monitor worker process status and restarts
+- **File Cleanup**: Implement automatic cleanup of old reports
+- **Error Tracking**: Log and alert on failed jobs
+- **Performance Metrics**: Track report generation times and success rates
+
+This implementation provides a robust, scalable solution for handling Aged Receivables report generation while maintaining backward compatibility and providing a smooth user experience.
