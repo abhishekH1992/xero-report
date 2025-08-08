@@ -158,6 +158,8 @@ async def serve_excel_file(filename: str, download: bool = Query(False, descript
     Serve Excel files from the storage/reports directory.
     """
     file_path = os.path.join("storage/reports", filename)
+
+    print(f"[SERVE_EXCEL_FILE] File path: {file_path}")
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"File not found: {filename}")
     
