@@ -217,6 +217,7 @@ class XeroAgedReceivablesService:
         while True:
             try:
                 try:
+                    print("[DEV DEBUG] Unpaid invoices", page)
                     invoices_response = accounting_api.get_invoices(
                         tenant_id,  # xero_tenant_id
                         empty,      # if_modified_since
@@ -261,8 +262,6 @@ class XeroAgedReceivablesService:
                     # Continue to next page instead of breaking
                     page += 1
                     continue
-                
-                print("--------------------------------")
                     
             except Exception as e:
                 print("[DEV DEBUG] Error getting the unpaid invoices", e)
