@@ -8,6 +8,7 @@ from app.services.xero_auth import XeroAuthService
 from app.util.xero_connection import create_xero_api_client
 from app.util.token_manager import TokenManager
 from app.database.models import XeroConnection
+import os
 
 
 class XeroAgedReceivablesService:
@@ -1519,7 +1520,7 @@ class XeroAgedReceivablesService:
                     sheet_name="Aged Receivables",
                     title="Aged Receivables Summary",
                     report_date=f"As at {report_date_obj.strftime('%d %B %Y')}",
-                    output_dir="./storage/reports",
+                    output_dir=os.getenv('OUTPUT_DIR'),
                     include_totals=True,
                     include_percentages=True
                 )
