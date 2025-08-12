@@ -414,6 +414,10 @@ class XeroAgedReceivablesService:
                 if not payment_date and payments:
                     # Get the latest payment date
                     latest_payment_date = None
+                    if invoice.invoice_number == 'INV-0076':
+                        print("--------------------------------")
+                        print("[DEV DEBUG] 2nd priority")
+                        print("--------------------------------")
                     for payment in payments:
                         if hasattr(payment, 'date'):
                             payment_dt = payment.date
@@ -516,7 +520,7 @@ class XeroAgedReceivablesService:
                     payments_after_report = 0.0
                     payments = getattr(invoice, 'payments', [])
 
-                    
+                    # [DEV DEBUG] date 2023-08-01 2025-08-07 2023-08-01
                     if payments:
                         for payment in payments:
                             if hasattr(payment, 'date'):
@@ -548,13 +552,13 @@ class XeroAgedReceivablesService:
                                 
                                 # Only include payments made after report date
                                 if payment_dt > report_date:
-                                    payments_after_report += float(payment_amount)
+                                    payments_after_report += float(payment_amount) + float(amount_due)
                     
                     # Use payments after report date if available, otherwise use adjusted_total_amount
                     if payments_after_report > 0:
                         report_amount = payments_after_report
                     else:
-                        report_amount = adjusted_total_amount
+                        report_amount = adjusted_amount_due
                     
                 
                 # Scenario 8: Issue date before report date, due date before report date, partial payments - SHOULD SHOW AS NEGATIVE
@@ -1504,7 +1508,7 @@ class XeroAgedReceivablesService:
                     sheet_name="Aged Receivables",
                     title="Aged Receivables Summary",
                     report_date=f"As at {report_date_obj.strftime('%d %B %Y')}",
-                    output_dir="/app/storage/reports",
+                    output_dir="./storage/reports",
                     include_totals=True,
                     include_percentages=True
                 )
