@@ -7,6 +7,7 @@ from xero_python.accounting.api.accounting_api import empty
 from app.services.xero_auth import XeroAuthService
 from app.util.xero_connection import create_xero_api_client
 from app.util.token_manager import TokenManager
+from app.database.models import XeroConnection
 
 
 class XeroAgedReceivablesService:
@@ -15,6 +16,9 @@ class XeroAgedReceivablesService:
     def __init__(self, xero_auth_service: XeroAuthService):
         self.xero_auth_service = xero_auth_service
         self.token_manager = TokenManager(xero_auth_service)
+        # Add session manager for proper database session handling
+        from app.util.db_session_manager import DatabaseSessionManager
+        self.session_manager = DatabaseSessionManager()
     
     def _safe_float(self, value, default=0.0):
         """Safely convert any numeric value to float"""
@@ -24,12 +28,53 @@ class XeroAgedReceivablesService:
             return float(value)
         except (ValueError, TypeError):
             return default
+
+    def _get_connection_by_id(self, session, connection_id: int):
+        """Get connection by ID using session manager"""
+        return session.query(XeroConnection).filter(
+            XeroConnection.id == connection_id,
+            XeroConnection.is_active == True
+        ).first()
+
+    def _get_connection_by_tenant_id(self, session, tenant_id: str):
+        """Get connection by tenant ID using session manager"""
+        return session.query(XeroConnection).filter(
+            XeroConnection.tenant_id == tenant_id,
+            XeroConnection.is_active == True
+        ).first()
+
+    def _get_connections_by_app(self, session, app_id: int):
+        """Get connections by app ID using session manager"""
+        return session.query(XeroConnection).filter(
+            XeroConnection.app_id == app_id,
+            XeroConnection.is_active == True
+        ).all()
+
+    def _get_all_connections(self, session):
+        """Get all active connections using session manager"""
+        return session.query(XeroConnection).filter(
+            XeroConnection.is_active == True
+        ).all()
+
+    def _extract_connection_data(self, connection):
+        """Extract connection data into dictionary"""
+        return {
+            'id': connection.id,
+            'tenant_id': connection.tenant_id,
+            'tenant_name': connection.tenant_name,
+            'app_id': connection.app_id,
+            'business_type': getattr(connection, 'business_type', 'Commercial Property'),
+            'access_token': connection.access_token,
+            'refresh_token': connection.refresh_token,
+            'expires_at': connection.expires_at,
+            'scope': connection.scope
+        }
     
 
     
     async def get_aged_receivables_data(
         self, 
-        tenant_id: str, 
+        connection_data: Dict[str, Any],  # Changed from tenant_id to connection_data
         report_date,
         periods: int = 4,
         period_of: int = 1,
@@ -41,7 +86,7 @@ class XeroAgedReceivablesService:
         Fetch all data needed for aged receivables report
         
         Args:
-            tenant_id: Xero tenant/organization ID
+            connection_data: Dictionary containing connection information (no DB objects)
             report_date: Report date for calculations
             periods: Number of aging periods
             period_of: Duration of each period
@@ -51,10 +96,23 @@ class XeroAgedReceivablesService:
         Returns:
             Dict containing invoices, credit_notes, and overpayments
         """
-        # Get connection from DB with app_id support
-        connection = self.xero_auth_service.get_connection(tenant_id, app_id)
-        if not connection:
-            raise HTTPException(status_code=404, detail="Connection not found")
+        # Extract tenant_id from connection_data
+        tenant_id = str(connection_data['tenant_id'])
+        
+        # Create a connection object from connection_data for API calls
+        # This avoids making database calls during the long calculation
+        from app.models.xero_auth import XeroConnection
+        
+        # Create a temporary connection object with the data we need
+        connection = XeroConnection(
+            tenant_id=connection_data['tenant_id'],
+            tenant_name=connection_data['tenant_name'],
+            app_id=connection_data['app_id'],
+            access_token=connection_data['access_token'],
+            refresh_token=connection_data['refresh_token'],
+            expires_at=connection_data['expires_at'],
+            scope=connection_data['scope']
+        )
 
         # Ensure we have a valid token before making API calls
         connection = await self.token_manager.ensure_valid_token(connection, tenant_id, app_id)
@@ -68,10 +126,16 @@ class XeroAgedReceivablesService:
             
             # Get invoices
             invoices = self._get_unpaid_invoices(accounting_api, tenant_id, date_for_xero, is_future_date)
+            print("--------------------------------")
+            print("[DEV DEBUG] Got the invoices", connection_data['tenant_name'])
+            print("--------------------------------")
             # invoices = []
             
             # Get credit notes
             credit_notes = self._get_credit_notes(accounting_api, tenant_id, date_for_xero)
+            print("--------------------------------")
+            print("[DEV DEBUG] Got the credit notes", connection_data['tenant_name'])
+            print("--------------------------------")
             # credit_notes = []
             
             # Get bank transactions
@@ -79,6 +143,9 @@ class XeroAgedReceivablesService:
 
             # Get Overpayments
             overpayments = self._get_overpayments(accounting_api, tenant_id, date_for_xero)
+            print("--------------------------------")
+            print("[DEV DEBUG] Got the overpayments", connection_data['tenant_name'])
+            print("--------------------------------")
             # overpayments = []
             # print("overpayments", overpayments);
 
@@ -136,6 +203,10 @@ class XeroAgedReceivablesService:
         page_size = 1000
         order = 'Date DESC'
 
+        print("--------------------------------")
+        print("[DEV DEBUG] Getting the unpaid invoices", tenant_id)
+        print("--------------------------------")
+
         # Write a logic to check if report date is future date or past date (today's date considered as past date)
         if is_future_date:
             # Future report date logic: Only include currently unpaid invoices
@@ -145,44 +216,66 @@ class XeroAgedReceivablesService:
             where_clause_unpaid = f'Type == "ACCREC" && Date <= DateTime({date_for_xero})'
         while True:
             try:
-                invoices_response = accounting_api.get_invoices(
-                    tenant_id,  # xero_tenant_id
-                    empty,      # if_modified_since
-                    where_clause_unpaid,  # where
-                    order,      # order
-                    empty,      # ids
-                    empty,      # invoice_numbers
-                    empty,      # contact_ids
-                    ["AUTHORISED", "PAID"] if not is_future_date else ["AUTHORISED"],  # statuses - more efficient than WHERE clause
-                    page,       # page
-                    empty,      # include_archived
-                    empty,      # created_by_my_app
-                    empty,      # unitdp
-                    "False",    # summary_only - Changed from "True" to "False" to get full details
-                    page_size,  # page_size
-                    empty       # search_term
-                )
-                
-                if not invoices_response.invoices:
-                    break
-                
-                unpaid_invoices.extend(invoices_response.invoices)
-                
-                if len(invoices_response.invoices) < page_size:
-                    break
-                
-                if page >= 100:  # Safety limit
-                    break
+                try:
+                    invoices_response = accounting_api.get_invoices(
+                        tenant_id,  # xero_tenant_id
+                        empty,      # if_modified_since
+                        where_clause_unpaid,  # where
+                        order,      # order
+                        empty,      # ids
+                        empty,      # invoice_numbers
+                        empty,      # contact_ids
+                        ["AUTHORISED", "PAID"] if not is_future_date else ["AUTHORISED"],  # statuses - more efficient than WHERE clause
+                        page,       # page
+                        empty,      # include_archived
+                        empty,      # created_by_my_app
+                        empty,      # unitdp
+                        "False",    # summary_only - Changed from "True" to "False" to get full details
+                        page_size,  # page_size
+                        empty       # search_term
+                    )
                     
-                page += 1
+                except Exception as e:
+                    print(f"[DEV DEBUG] ERROR on page {page}: {str(e)}")
+                    import traceback
+                    print(f"[DEV DEBUG] Full traceback for page {page}: {traceback.format_exc()}")
+                    # Continue to next page instead of breaking
+                    page += 1
+                    continue
+                
+                try:
+                    if not invoices_response.invoices:
+                        break
+                    
+                    unpaid_invoices.extend(invoices_response.invoices)
+                    
+                    # If we got fewer results than page_size, we've reached the end
+                    if len(invoices_response.invoices) < page_size:
+                        break
+                    page += 1
+                    
+                except Exception as e:
+                    print(f"[DEV DEBUG] ERROR processing response for page {page}: {str(e)}")
+                    import traceback
+                    print(f"[DEV DEBUG] Full traceback for response processing on page {page}: {traceback.format_exc()}")
+                    # Continue to next page instead of breaking
+                    page += 1
+                    continue
+                
+                print("--------------------------------")
                     
             except Exception as e:
+                print("[DEV DEBUG] Error getting the unpaid invoices", e)
                 break
             
         
         # Call 2: Get PAID invoices with DueDate > report_date
         paid_invoices = []
         page = 1
+
+        print("--------------------------------")
+        print("[DEV DEBUG] Getting the paid invoices", tenant_id)
+        print("--------------------------------")
         
         if not is_future_date:
             while True:
@@ -220,6 +313,7 @@ class XeroAgedReceivablesService:
                     page += 1
                     
                 except Exception as e:
+                    print("[DEV DEBUG] Error getting the paid invoices", e)
                     break
             
         
@@ -227,6 +321,10 @@ class XeroAgedReceivablesService:
         # This handles the case where an invoice was issued in July but paid in June
         early_paid_invoices = []
         page = 1
+
+        print("--------------------------------")
+        print("[DEV DEBUG] Getting the early paid invoices", tenant_id)
+        print("--------------------------------")
         
         if not is_future_date:
             while True:
@@ -264,9 +362,12 @@ class XeroAgedReceivablesService:
                     page += 1
                     
                 except Exception as e:
+                    print("[DEV DEBUG] Error getting the early invoices", e)
                     break
             
-
+        print("--------------------------------")
+        print("[DEV DEBUG] Looping through unpaid invoices", tenant_id)
+        print("--------------------------------")
         for invoice in unpaid_invoices:
             if (is_future_date and invoice.type == "ACCREC" and 
                 invoice.amount_due > 0 and 
@@ -313,6 +414,10 @@ class XeroAgedReceivablesService:
                 if not payment_date and payments:
                     # Get the latest payment date
                     latest_payment_date = None
+                    if invoice.invoice_number == 'INV-0076':
+                        print("--------------------------------")
+                        print("[DEV DEBUG] 2nd priority")
+                        print("--------------------------------")
                     for payment in payments:
                         if hasattr(payment, 'date'):
                             payment_dt = payment.date
@@ -415,7 +520,7 @@ class XeroAgedReceivablesService:
                     payments_after_report = 0.0
                     payments = getattr(invoice, 'payments', [])
 
-                    
+                    # [DEV DEBUG] date 2023-08-01 2025-08-07 2023-08-01
                     if payments:
                         for payment in payments:
                             if hasattr(payment, 'date'):
@@ -447,13 +552,13 @@ class XeroAgedReceivablesService:
                                 
                                 # Only include payments made after report date
                                 if payment_dt > report_date:
-                                    payments_after_report += float(payment_amount)
+                                    payments_after_report += float(payment_amount) + float(amount_due)
                     
                     # Use payments after report date if available, otherwise use adjusted_total_amount
                     if payments_after_report > 0:
                         report_amount = payments_after_report
                     else:
-                        report_amount = adjusted_total_amount
+                        report_amount = adjusted_amount_due
                     
                 
                 # Scenario 8: Issue date before report date, due date before report date, partial payments - SHOULD SHOW AS NEGATIVE
@@ -495,6 +600,9 @@ class XeroAgedReceivablesService:
         # Filter PAID invoices with business logic:
         # - DueDate > report_date
         # - Issue date and Due date must be in the same month (to avoid showing invoices issued in one month but due in another)
+        print("--------------------------------")
+        print("[DEV DEBUG] Looping through paid invoices", tenant_id)
+        print("--------------------------------")
         for invoice in paid_invoices:
             if (invoice.type == "ACCREC" and
                 invoice.status == "PAID" and
@@ -519,6 +627,9 @@ class XeroAgedReceivablesService:
 
         # Filter EARLY PAID invoices (issued after report date but paid before report date)
         # This handles the specific case where an invoice was issued in July but paid in June
+        print("--------------------------------")
+        print("[DEV DEBUG] Looping through early paid invoices", tenant_id)
+        print("--------------------------------")
         for invoice in early_paid_invoices:
             if invoice.type == "ACCREC":
                 # Get issue date first for the initial check
@@ -885,37 +996,32 @@ class XeroAgedReceivablesService:
 
         is_future_date = report_date_obj > datetime.now().date()
 
-        # Get all active connections with app_id filtering
+        # Get database session for retrieving connections
+        session = None
         failed_connections = []  # Track failed connections from initial retrieval
         connections = []
+        connection_data_list = []  # Store connection data without DB objects
         
-        if connection_id:
-            # Handle comma-separated connection IDs
-            connection_ids = [cid.strip() for cid in connection_id.split(',')]
-            for cid in connection_ids:
-                try:
-                    # Try to parse as integer for connection ID
-                    connection_id_int = int(cid)
-                    connection = self.xero_auth_service.get_connection_by_id(connection_id_int)
-                    if connection:
-                        connections.append(connection)
-                    else:
-                        # Connection not found
-                        failed_connections.append({
-                            "connection_id": cid,
-                            "tenant_id": None,
-                            "tenant_name": "Unknown",
-                            "app_id": None,
-                            "error": "Connection not found",
-                            "error_details": f"Connection with ID {cid} was not found in the database"
-                        })
-                except ValueError:
-                    # If not an integer, try as tenant_id
+        try:
+            # Get fresh session for this operation
+            session = self.session_manager.get_fresh_session()
+            
+            # Get all active connections with app_id filtering
+            if connection_id:
+                # Handle comma-separated connection IDs
+                connection_ids = [cid.strip() for cid in connection_id.split(',')]
+                for cid in connection_ids:
                     try:
-                        connection = self.xero_auth_service.get_connection(cid)
+                        # Try to parse as integer for connection ID
+                        connection_id_int = int(cid)
+                        connection = self._get_connection_by_id(session, connection_id_int)
                         if connection:
                             connections.append(connection)
+                            # Extract connection data (no DB objects)
+                            connection_data = self._extract_connection_data(connection)
+                            connection_data_list.append(connection_data)
                         else:
+                            # Connection not found
                             failed_connections.append({
                                 "connection_id": cid,
                                 "tenant_id": None,
@@ -924,7 +1030,36 @@ class XeroAgedReceivablesService:
                                 "error": "Connection not found",
                                 "error_details": f"Connection with ID {cid} was not found in the database"
                             })
+                    except ValueError:
+                        # If not an integer, try as tenant_id
+                        try:
+                            connection = self._get_connection_by_tenant_id(session, cid)
+                            if connection:
+                                connections.append(connection)
+                                # Extract connection data (no DB objects)
+                                connection_data = self._extract_connection_data(connection)
+                                connection_data_list.append(connection_data)
+                            else:
+                                failed_connections.append({
+                                    "connection_id": cid,
+                                    "tenant_id": None,
+                                    "tenant_name": "Unknown",
+                                    "app_id": None,
+                                    "error": "Connection not found",
+                                    "error_details": f"Connection with ID {cid} was not found in the database"
+                                })
+                        except Exception as e:
+                            failed_connections.append({
+                                "connection_id": cid,
+                                "tenant_id": None,
+                                "tenant_name": "Unknown",
+                                "app_id": None,
+                                "error": str(e),
+                                "error_details": f"Failed to retrieve connection {cid}: {str(e)}"
+                            })
                     except Exception as e:
+                        # Log error but continue with other connections
+                        print(f"Error getting connection {cid}: {str(e)}")
                         failed_connections.append({
                             "connection_id": cid,
                             "tenant_id": None,
@@ -933,24 +1068,36 @@ class XeroAgedReceivablesService:
                             "error": str(e),
                             "error_details": f"Failed to retrieve connection {cid}: {str(e)}"
                         })
-                except Exception as e:
-                    # Log error but continue with other connections
-                    print(f"Error getting connection {cid}: {str(e)}")
-                    failed_connections.append({
-                        "connection_id": cid,
-                        "tenant_id": None,
-                        "tenant_name": "Unknown",
-                        "app_id": None,
-                        "error": str(e),
-                        "error_details": f"Failed to retrieve connection {cid}: {str(e)}"
-                    })
-        elif app_id:
-            connections = self.xero_auth_service.get_connections_by_app(app_id)
-        else:
-            connections = self.xero_auth_service.get_all_connections()
+            elif app_id:
+                connections = self._get_connections_by_app(session, app_id)
+                # Extract connection data for all connections
+                for connection in connections:
+                    connection_data = self._extract_connection_data(connection)
+                    connection_data_list.append(connection_data)
+            else:
+                connections = self._get_all_connections(session)
+                # Extract connection data for all connections
+                for connection in connections:
+                    connection_data = self._extract_connection_data(connection)
+                    connection_data_list.append(connection_data)
+            
+            if not connections and not failed_connections:
+                raise HTTPException(status_code=404, detail="No active Xero connections found")
+                
+        finally:
+            # CRITICAL: Close the database session immediately after getting connection data
+            if session:
+                self.session_manager.close_session(session)
+                print("[AGED_RECEIVABLES] Database session closed after retrieving connection data")
         
-        if not connections and not failed_connections:
-            raise HTTPException(status_code=404, detail="No active Xero connections found")
+        # IMPORTANT: At this point, all database connections are closed.
+        # We now have connection_data_list with all the data we need.
+        # The long calculation (4-5 minutes) will happen WITHOUT any database connections open.
+        # This prevents "idle in transaction" issues and connection timeouts.
+
+        print("--------------------------------")
+        print("[DEV DEBUG] Got the connection List", connection_data_list)
+        print("--------------------------------")
 
         # Generate bucket names based on configurable periods
         bucket_names = generate_bucket_names(periods, period_type, show_current)
@@ -958,23 +1105,32 @@ class XeroAgedReceivablesService:
         all_report_data = {}
         total_invoices = 0
         
-        # Process each connection
-        for connection in connections:
+        # Process each connection using connection data (no DB objects)
+        for connection_data in connection_data_list:
             try:
                 # Fetch data for this connection with app_id support
                 data = await self.get_aged_receivables_data(
-                    tenant_id=str(connection.tenant_id),
+                    connection_data=connection_data,  # Pass connection data instead of tenant_id
                     report_date=report_date_obj,
                     periods=periods,
                     period_of=period_of,
                     period_type=period_type,
-                    app_id=connection.app_id,
+                    app_id=connection_data['app_id'],
                     is_future_date=is_future_date
                 )
+
+                # print("------------Data------------", data)
                 
                 invoices = data["invoices"]
                 credit_notes = data["credit_notes"]
                 overpayments = data["overpayments"]
+
+                print("--------------------------------")
+                print("[DEV DEBUG] Connection Data", connection_data['tenant_name'])
+                print("[DEV DEBUG] Invoices", len(invoices))
+                print("[DEV DEBUG] Credit Notes", len(credit_notes))
+                print("[DEV DEBUG] Overpayments", len(overpayments))
+                print("--------------------------------")
 
                 # print(f"[DEBUG] Overpayments: {overpayments}")
                 # print(f"[DEBUG] Credit notes: {credit_notes}")
@@ -985,6 +1141,11 @@ class XeroAgedReceivablesService:
                 # Process invoices
                 # First, group invoices by contact to handle multiple paid invoices per contact
                 contact_invoices = {}
+
+                print("--------------------------------")
+                print("[DEV DEBUG] Connection Data", connection_data['tenant_name'])
+                print("[DEV DEBUG] Looping through invoices to handle multiple paid invoices per contact")
+                print("--------------------------------")
                 
                 for invoice in invoices:
                     contact_name = getattr(invoice.contact, 'name', 'Unknown Contact') if hasattr(invoice, 'contact') and invoice.contact else 'Unknown Contact'
@@ -993,16 +1154,20 @@ class XeroAgedReceivablesService:
                         contact_invoices[contact_name] = []
                     contact_invoices[contact_name].append(invoice)
                 
+                print("--------------------------------")
+                print("[DEV DEBUG] Connection Data", connection_data['tenant_name'])
+                print("[DEV DEBUG] Looping through contact invoices to handle multiple paid invoices per contact")
+                print("--------------------------------")
                 # Process each contact's invoices
                 for contact_name, contact_invoice_list in contact_invoices.items():
                     # Create unique key for this contact
-                    business_type = getattr(connection, 'business_type', 'Commercial Property')
-                    key = f"{business_type}|{connection.tenant_name}|{contact_name}"
+                    business_type = connection_data['business_type']
+                    key = f"{business_type}|{connection_data['tenant_name']}|{contact_name}"
                     
                     if key not in all_report_data:
                         all_report_data[key] = {
                             "business_unit": business_type,
-                            "company": connection.tenant_name,
+                            "company": connection_data['tenant_name'],
                             "contact": contact_name,
                             "invoice_details": {}
                         }
@@ -1025,7 +1190,7 @@ class XeroAgedReceivablesService:
                             date_field="due_date",
                             is_negative=getattr(invoice, 'is_negative', False),
                             date_fallback=report_date_obj,
-                            connection_name=connection.tenant_name,
+                            connection_name=connection_data['tenant_name'],
                             business_type=business_type,
                             item_type="invoice",
                             show_current=show_current
@@ -1045,8 +1210,8 @@ class XeroAgedReceivablesService:
                         date_field="date",
                         is_negative=True,
                         date_fallback=report_date_obj,
-                        connection_name=connection.tenant_name,
-                        business_type=getattr(connection, 'business_type', 'Commercial Property'),
+                        connection_name=connection_data['tenant_name'],
+                        business_type=connection_data['business_type'],
                         item_type="credit_note",
                         show_current=show_current
                     )
@@ -1065,8 +1230,8 @@ class XeroAgedReceivablesService:
                         date_field="date",
                         is_negative=True,
                         date_fallback=report_date_obj,
-                        connection_name=connection.tenant_name,
-                        business_type=getattr(connection, 'business_type', 'Commercial Property'),
+                        connection_name=connection_data['tenant_name'],
+                        business_type=connection_data['business_type'],
                         item_type="overpayment",
                         show_current=show_current
                     )
@@ -1074,15 +1239,15 @@ class XeroAgedReceivablesService:
             except Exception as e:
                 import traceback
                 error_details = traceback.format_exc()
-                print(f"[XERO REPORT] Error processing connection {connection.tenant_name} (App {connection.app_id}): {str(e)}")
+                print(f"[XERO REPORT] Error processing connection {connection_data['tenant_name']} (App {connection_data['app_id']}): {str(e)}")
                 print(f"[XERO REPORT] Full error details: {error_details}")
                 
                 # Track failed connection
                 failed_connections.append({
-                    "connection_id": connection.id,
-                    "tenant_id": connection.tenant_id,
-                    "tenant_name": connection.tenant_name,
-                    "app_id": connection.app_id,
+                    "connection_id": connection_data['id'],
+                    "tenant_id": connection_data['tenant_id'],
+                    "tenant_name": connection_data['tenant_name'],
+                    "app_id": connection_data['app_id'],
                     "error": str(e),
                     "error_details": error_details
                 })
@@ -1092,6 +1257,9 @@ class XeroAgedReceivablesService:
 
         # Prepare data for Excel export (only if is_response_only is 0)
         excel_data = []
+        print("--------------------------------")
+        print("[DEV DEBUG] Looping through all_report_data to prepare data for Excel export")
+        print("--------------------------------")
         if is_response_only == 0:
             for key, data in all_report_data.items():
                 # Calculate total amount first
@@ -1340,7 +1508,7 @@ class XeroAgedReceivablesService:
                     sheet_name="Aged Receivables",
                     title="Aged Receivables Summary",
                     report_date=f"As at {report_date_obj.strftime('%d %B %Y')}",
-                    output_dir="/app/storage/reports",
+                    output_dir="./storage/reports",
                     include_totals=True,
                     include_percentages=True
                 )

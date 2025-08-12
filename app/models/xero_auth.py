@@ -34,6 +34,7 @@ class XeroConnection(BaseModel):
     """Model for storing Xero connection data"""
     tenant_id: str = Field(..., description="Xero tenant/organization ID")
     tenant_name: str = Field(..., description="Xero tenant/organization name")
+    app_id: int = Field(..., description="Xero app ID (1 or 2)")
     access_token: str = Field(..., description="Current access token")
     refresh_token: str = Field(..., description="Refresh token")
     expires_at: datetime = Field(..., description="Token expiration time")
