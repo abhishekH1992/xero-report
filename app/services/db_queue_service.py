@@ -52,7 +52,7 @@ class DatabaseQueueService:
         )
         
         if not queue_entry:
-            print("[DB_QUEUE] No pending jobs found")
+            # print("[DB_QUEUE] No pending jobs found")
             return None
         
         print(f"[DB_QUEUE] Found pending job: {queue_entry.job_id}")

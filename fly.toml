@@ -13,7 +13,7 @@ primary_region = 'syd'
   PYTHONPATH = '/app'
 
 [processes]
-  app = 'bash -c "python -m app.workers.report_worker & gunicorn app.main:app --bind 0.0.0.0:8000 --workers 1 --worker-class uvicorn.workers.UvicornWorker"'
+  app = 'bash -c "python -m app.workers.report_worker & gunicorn app.main:app --bind 0.0.0.0:8000 --workers 1 --worker-class uvicorn.workers.UvicornWorker --timeout 3600"'
 
 [[mounts]]
   source = 'shared_reports_volume'
@@ -41,7 +41,7 @@ primary_region = 'syd'
     path = '/health'
 
 [[vm]]
-  memory = '1gb'
+  memory = '2gb'
   cpu_kind = 'shared'
   cpus = 1
   processes = ['app']
