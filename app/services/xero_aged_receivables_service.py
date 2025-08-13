@@ -8,6 +8,7 @@ from app.services.xero_auth import XeroAuthService
 from app.util.xero_connection import create_xero_api_client
 from app.util.token_manager import TokenManager
 from app.database.models import XeroConnection
+import os
 
 
 class XeroAgedReceivablesService:
@@ -217,6 +218,7 @@ class XeroAgedReceivablesService:
         while True:
             try:
                 try:
+                    print("[DEV DEBUG] Unpaid invoices", page)
                     invoices_response = accounting_api.get_invoices(
                         tenant_id,  # xero_tenant_id
                         empty,      # if_modified_since
@@ -261,8 +263,6 @@ class XeroAgedReceivablesService:
                     # Continue to next page instead of breaking
                     page += 1
                     continue
-                
-                print("--------------------------------")
                     
             except Exception as e:
                 print("[DEV DEBUG] Error getting the unpaid invoices", e)
@@ -414,10 +414,6 @@ class XeroAgedReceivablesService:
                 if not payment_date and payments:
                     # Get the latest payment date
                     latest_payment_date = None
-                    if invoice.invoice_number == 'INV-0076':
-                        print("--------------------------------")
-                        print("[DEV DEBUG] 2nd priority")
-                        print("--------------------------------")
                     for payment in payments:
                         if hasattr(payment, 'date'):
                             payment_dt = payment.date
@@ -480,38 +476,63 @@ class XeroAgedReceivablesService:
                 if (issue_date and issue_date <= report_date and 
                     payment_date and payment_date <= report_date and 
                     due_date and due_date > report_date):
-                    should_include = False
+                    # Scenario 1a: Issue date in June, Payment in June, Due date in July, but still has outstanding balance - SHOULD SHOW IN AR
+                    if (issue_date and issue_date <= report_date and 
+                      payment_date and payment_date <= report_date and
+                      amount_due > 0):  # Include if there's still money owed
+                        should_include = True
+                        is_negative = False
+                        report_amount = adjusted_amount_due
+                    else:
+                        should_include = False
 
+                # Scenario 2: Issue date in June, Payment in June, Due date in July, but no outstanding balance - SHOULD NOT SHOW IN AR
                 elif (issue_date and issue_date <= report_date and 
                       payment_date is not None and payment_date <= report_date and 
                       due_date and due_date <= report_date and
                       amount_due == 0):  # Only for fully paid invoices
                     should_include = False
                 
-                # Scenario 2: Issue date in June, Not Paid in June, Due date in July - SHOULD SHOW IN CURRENT
+                # Scenario 3: Issue date in June, Not Paid in June, Due date in July - SHOULD SHOW IN CURRENT
                 elif (issue_date and issue_date <= report_date and 
                       (not payment_date or payment_date > report_date) and 
                       due_date and due_date > report_date):
+
                     should_include = True
                     is_negative = False
-                    report_amount = adjusted_amount_due if adjusted_amount_due > 0 else adjusted_total_amount
+                    credit_note_after_report = False
+                    if hasattr(invoice, 'credit_notes') and invoice.credit_notes:
+                        for credit_note in invoice.credit_notes:
+                            if hasattr(credit_note, 'date') and credit_note.date:
+                                credit_note_date = credit_note.date
+                                if hasattr(credit_note_date, 'date'):
+                                    credit_note_date = credit_note_date.date()
+                                
+                                # If credit note date is after report date, don't include this invoice
+                                if credit_note_date > report_date:
+                                    credit_note_after_report = True
+                                    break
+                    
+                    if credit_note_after_report:
+                        report_amount = adjusted_total_amount
+                    else:
+                        report_amount = adjusted_amount_due if adjusted_amount_due > 0 else adjusted_total_amount
 
-                
-                # Scenario 3: Issue date in July, Paid in June, Due date in July - SHOULD SHOW IN CURRENT AS NEGATIVE
+                # Scenario 4: Issue date in July, Paid in June, Due date in July - SHOULD SHOW IN CURRENT AS NEGATIVE
                 elif (issue_date and issue_date > report_date and 
                       payment_date and payment_date <= report_date and 
                       due_date and due_date >= report_date):
                     should_include = True
                     is_negative = True
                     report_amount = adjusted_total_amount
-                
-                # Scenario 4: Issue date before report date, paid before report date - SHOULD NOT SHOW IN AR
+
+                # Scenario 5: Issue date before report date, paid before report date - SHOULD NOT SHOW IN AR
                 elif (issue_date and issue_date <= report_date and 
                       payment_date and payment_date <= report_date and
                       amount_due == 0):  # Only for fully paid invoices
                     should_include = False
                 
-                # Scenario 5: Issue date before report date, paid after report date - SHOULD SHOW IN CURRENT AS POSITIVE
+                # Scenario 6: Issue date before report date, paid after report date - SHOULD SHOW IN CURRENT AS POSITIVE
                 elif (issue_date and issue_date <= report_date and 
                       payment_date and payment_date > report_date):
                     should_include = True
@@ -519,8 +540,7 @@ class XeroAgedReceivablesService:
                     # Calculate payments made after report date
                     payments_after_report = 0.0
                     payments = getattr(invoice, 'payments', [])
-
-                    # [DEV DEBUG] date 2023-08-01 2025-08-07 2023-08-01
+                    
                     if payments:
                         for payment in payments:
                             if hasattr(payment, 'date'):
@@ -552,36 +572,42 @@ class XeroAgedReceivablesService:
                                 
                                 # Only include payments made after report date
                                 if payment_dt > report_date:
-                                    payments_after_report += float(payment_amount) + float(amount_due)
+                                    payments_after_report += float(payment_amount)
+
+                        payments_after_report += float(amount_due)
                     
                     # Use payments after report date if available, otherwise use adjusted_total_amount
                     if payments_after_report > 0:
                         report_amount = payments_after_report
+                    elif amount_due == 0:
+                        report_amount = adjusted_total_amount
                     else:
                         report_amount = adjusted_amount_due
-                    
                 
-                # Scenario 8: Issue date before report date, due date before report date, partial payments - SHOULD SHOW AS NEGATIVE
+                # Scenario 7: Issue date before report date, due date before report date, partial payments - SHOULD SHOW AS NEGATIVE
                 elif (issue_date and issue_date <= report_date and 
                       due_date and due_date <= report_date and
                       amount_paid > 0 and amount_due > 0):
                     should_include = True
                     is_negative = False
-                    report_amount = adjusted_amount_due  # Show the partial payment amount as negative               
-                # Default: Include if it was outstanding as of report date (unpaid invoices)
+                    report_amount = adjusted_amount_due  # Show the partial payment amount as negative
+
+                # Scenario 8: Include if it was outstanding as of report date (unpaid invoices)
                 elif (issue_date and issue_date <= report_date and 
                       (not payment_date or payment_date > report_date)):
                     should_include = True
                     is_negative = False
-                    report_amount = adjusted_amount_due if adjusted_amount_due > 0 else adjusted_total_amount           
-                # Scenario 6: Issue date before report date, paid on report date - SHOULD NOT SHOW IN AR
+                    report_amount = adjusted_amount_due if adjusted_amount_due > 0 else adjusted_total_amount  
+
+                # Scenario 9: Issue date before report date, paid on report date - SHOULD NOT SHOW IN AR
                 elif (issue_date and issue_date <= report_date and 
                       payment_date and payment_date == report_date):
-                    should_include = False              
-                # Scenario 7: Issue date before report date, paid on or before report date - SHOULD NOT SHOW IN AR
+                    should_include = False
+
+                # Scenario 10: Issue date before report date, paid on or before report date - SHOULD NOT SHOW IN AR
                 elif (issue_date and issue_date <= report_date and 
                       payment_date and payment_date <= report_date):
-                    should_include = False               
+                    should_include = False
                 if should_include:
                     # Create a modified invoice object with the correct amount
                     modified_invoice = type("Item", (), {})()
@@ -1328,7 +1354,7 @@ class XeroAgedReceivablesService:
                     system_comments = generate_system_comments(invoice_details, bucket_names)
                 row["System Comments"] = system_comments
                 # Only include rows that have non-zero amounts
-                if total_amount != 0:
+                if total_amount != 0 or any(data.get(bucket_name, 0) != 0 for bucket_name in bucket_names):
                     excel_data.append(row)
 
         # Handle table format conversion if requested
@@ -1508,7 +1534,7 @@ class XeroAgedReceivablesService:
                     sheet_name="Aged Receivables",
                     title="Aged Receivables Summary",
                     report_date=f"As at {report_date_obj.strftime('%d %B %Y')}",
-                    output_dir="./storage/reports",
+                    output_dir=os.getenv('OUTPUT_DIR'),
                     include_totals=True,
                     include_percentages=True
                 )

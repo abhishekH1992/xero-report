@@ -146,7 +146,14 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
         allocations = getattr(item, "allocations", [])
         if allocations and getattr(allocations[0], "date", None):
             item_date = getattr(allocations[0], "date")
-    
+    elif item_type == "credit_note":
+        # Credit notes without allocations should use due_date for aging calculations
+        if hasattr(item, "due_date") and getattr(item, "due_date", None):
+            item_date = getattr(item, "due_date")
+        elif hasattr(item, "DueDate") and getattr(item, "DueDate", None):
+            # Handle Xero API response format
+            item_date = getattr(item, "DueDate")
+
     # Convert datetime to date if needed
     if item_date and hasattr(item_date, "date"):
         item_date = item_date.date()
