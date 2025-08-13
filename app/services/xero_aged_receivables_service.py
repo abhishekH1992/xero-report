@@ -1354,7 +1354,7 @@ class XeroAgedReceivablesService:
                     system_comments = generate_system_comments(invoice_details, bucket_names)
                 row["System Comments"] = system_comments
                 # Only include rows that have non-zero amounts
-                if total_amount != 0:
+                if total_amount != 0 or any(data.get(bucket_name, 0) != 0 for bucket_name in bucket_names):
                     excel_data.append(row)
 
         # Handle table format conversion if requested
