@@ -563,7 +563,9 @@ class XeroAgedReceivablesService:
                                 
                                 # Only include payments made after report date
                                 if payment_dt > report_date:
-                                    payments_after_report += float(payment_amount) + float(amount_due)
+                                    payments_after_report += float(payment_amount)
+
+                        payments_after_report += float(amount_due)
                     
                     # Use payments after report date if available, otherwise use adjusted_total_amount
                     if payments_after_report > 0:
