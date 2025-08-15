@@ -329,25 +329,23 @@ def format_account_number(account_number: str) -> str:
 
 def format_date_range_for_excel(start_date: str, end_date: str) -> str:
     """
-    Format date range for Excel column headers.
+    Format date for Excel column headers - shows only the end date.
     
     Args:
-        start_date: Start date in YYYY-MM-DD format
+        start_date: Start date in YYYY-MM-DD format (not used, kept for compatibility)
         end_date: End date in YYYY-MM-DD format
     
     Returns:
-        Formatted string (e.g., "21'Jul 2025 - 15'Jul 2025")
+        Formatted string (e.g., "21'Jul 2025")
     """
     try:
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
         end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-        
-        start_formatted = f"{start_dt.day}'{start_dt.strftime('%b')} {start_dt.year}"
         end_formatted = f"{end_dt.day}'{end_dt.strftime('%b')} {end_dt.year}"
         
-        return f"{start_formatted} - {end_formatted}"
+        # Only show the end date, not the range
+        return end_formatted
     except ValueError:
-        return f"{start_date} - {end_date}"
+        return end_date
 
 
 def calculate_cash_balance_summary(cashflow_data: dict, date_ranges: List[Tuple[str, str]], 
