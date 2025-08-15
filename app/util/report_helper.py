@@ -411,9 +411,11 @@ def calculate_cash_balance_summary(cashflow_data: dict, date_ranges: List[Tuple[
         summary["periods"][period_key] = {
             "fully_owned": 0.0,
             "partially_owned": 0.0,
+            "not_owned": 0.0,
             "total_available_cash": 0.0,
             "total_with_term_deposit": 0.0,
-            "minimum_cash_holding_excess": 0.0
+            "minimum_cash_holding_excess": 0.0,
+            "final_cash_balance": 0.0
         }
         
         # Calculate fully owned cash
@@ -434,10 +436,20 @@ def calculate_cash_balance_summary(cashflow_data: dict, date_ranges: List[Tuple[
                     closing_balance = period_data.get('closing_balance', 0)
                     summary["periods"][period_key]["partially_owned"] += float(closing_balance) if closing_balance else 0
         
+        # Calculate not owned cash
+        for connection in ownership_groups.get("not_owned", []):
+            connection_name = connection.tenant_name
+            if connection_name in cashflow_data:
+                for account_data in cashflow_data[connection_name].get('accounts', []):
+                    period_data = account_data.get('periods', {}).get(period_key, {})
+                    closing_balance = period_data.get('closing_balance', 0)
+                    summary["periods"][period_key]["not_owned"] += float(closing_balance) if closing_balance else 0
+        
         # Calculate totals
         period_summary = summary["periods"][period_key]
         period_summary["total_available_cash"] = period_summary["fully_owned"] + period_summary["partially_owned"]
         period_summary["total_with_term_deposit"] = period_summary["total_available_cash"] + summary["term_deposit"]
         period_summary["minimum_cash_holding_excess"] = period_summary["total_available_cash"] - summary["minimum_cash_holding"]
-    
+        period_summary["final_cash_balance"] = period_summary["total_with_term_deposit"] + period_summary["not_owned"]
+
     return summary

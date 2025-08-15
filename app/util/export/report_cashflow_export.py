@@ -503,17 +503,30 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             period_key = f"{start_date}_{end_date}"
             period_summary = cash_summary["periods"][period_key]
             cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-            cell.value = 0
+            cell.value = period_summary["not_owned"]
             cell.number_format = '"$"#,##0.00'
             cell.border = border
+            if period_summary["not_owned"] < 0:
+                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                cell.font = Font(color="FF0000")  # Red text
             col_idx += 1
         
         # Add difference column if multiple periods
-        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-        cell.value = 0
-        cell.number_format = '"$"#,##0.00'
-        cell.border = border
-        col_idx += 1
+        if len(date_ranges) > 1:
+            periods_list = list(cash_summary["periods"].keys())
+            if len(periods_list) >= 2:
+                latest_period = periods_list[0]
+                previous_period = periods_list[1]
+                difference = cash_summary["periods"][latest_period]["not_owned"] - cash_summary["periods"][previous_period]["not_owned"]
+                cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                cell.value = difference
+                cell.number_format = '"$"#,##0.00'
+                cell.border = border
+                # Add red formatting for negative values
+                if difference < 0:
+                    cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                    cell.font = Font(color="FF0000")  # Red text
+                col_idx += 1
             
         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
         cell.value = "LP/GP & SW developments"
@@ -526,22 +539,38 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             period_key = f"{start_date}_{end_date}"
             period_summary = cash_summary["periods"][period_key]
             cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-            cell.value = 0
+            cell.value = period_summary["final_cash_balance"]
             cell.number_format = '"$"#,##0.00'
             cell.border = border
+            cell.font = Font(bold=True)
+            if period_summary["final_cash_balance"] < 0:
+                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                cell.font = Font(color="FF0000")  # Red text
             col_idx += 1
         
         # Add difference column if multiple periods
-        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-        cell.value = 0
-        cell.number_format = '"$"#,##0.00'
-        cell.border = border
-        col_idx += 1
+        if len(date_ranges) > 1:
+            periods_list = list(cash_summary["periods"].keys())
+            if len(periods_list) >= 2:
+                latest_period = periods_list[0]
+                previous_period = periods_list[1]
+                difference = cash_summary["periods"][latest_period]["final_cash_balance"] - cash_summary["periods"][previous_period]["final_cash_balance"]
+                cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                cell.value = difference
+                cell.number_format = '"$"#,##0.00'
+                cell.border = border
+                cell.font = Font(bold=True)
+                # Add red formatting for negative values
+                if difference < 0:
+                    cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                    cell.font = Font(bold=True, color="FF0000")  # Red text
+                col_idx += 1
             
         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
         cell.value = "Total Cash"
         cell.border = border
         cell.alignment = Alignment(wrap_text=True)
+        cell.font = Font(bold=True)
         
         current_row += 3
         
