@@ -137,7 +137,7 @@ async def get_cashflow_report(
             cashflow_data=cashflow_data,
             date_ranges=date_ranges,
             filename="cashflow_report",
-            output_dir="/app/storage/reports",
+            output_dir=os.getenv('OUTPUT_DIR'),
             report_date=report_date_str
         )
 
