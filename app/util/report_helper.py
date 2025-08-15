@@ -1,6 +1,8 @@
 from typing import List, Tuple, Any
 from datetime import datetime, timedelta
 import calendar
+import os
+import json
 
 def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, period_type: str, show_current: bool = True) -> str:
     """
@@ -362,11 +364,45 @@ def calculate_cash_balance_summary(cashflow_data: dict, date_ranges: List[Tuple[
     Returns:
         Dictionary containing calculated cash balance summary
     """
+    
+    # Calculate minimum cash holding from JSON file - only for companies in the report
+    minimum_cash_holding = 0.0
+    try:
+        json_file_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'min_account_balance_by_account.json')
+        if os.path.exists(json_file_path):
+            with open(json_file_path, 'r') as f:
+                min_balance_data = json.load(f)
+                
+                # Get list of companies that have data in the report
+                companies_in_report = set()
+                for connection in ownership_groups.get("fully_owned", []):
+                    if connection.tenant_name in cashflow_data:
+                        companies_in_report.add(connection.tenant_name)
+                for connection in ownership_groups.get("partially_owned", []):
+                    if connection.tenant_name in cashflow_data:
+                        companies_in_report.add(connection.tenant_name)
+                
+                # Sum minimum balances only for companies that are in the report
+                for tenant_id, tenant_accounts in min_balance_data.items():
+                    # Find the company name for this tenant_id
+                    company_name = None
+                    for connection in ownership_groups.get("fully_owned", []) + ownership_groups.get("partially_owned", []):
+                        if hasattr(connection, 'tenant_id') and connection.tenant_id == tenant_id:
+                            company_name = connection.tenant_name
+                            break
+                    
+                    # Only add to total if this company is in the report
+                    if company_name and company_name in companies_in_report:
+                        for account_balance in tenant_accounts.values():
+                            minimum_cash_holding += float(account_balance)
+    except Exception as e:
+        minimum_cash_holding = 0.0
+    
     summary = {
         "report_date": report_date,
         "periods": {},
         "term_deposit": 1300000.00,  # Static term deposit value
-        "minimum_cash_holding": 5000000.00  # Static minimum cash holding
+        "minimum_cash_holding": minimum_cash_holding  # Calculated from JSON file
     }
     
     # Calculate for each period

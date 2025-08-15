@@ -78,7 +78,7 @@ class XeroCashFlowService:
         for connection in connections:
             try:
                 connection_data = await self._process_connection(
-                    connection, date_ranges, report_date
+                    connection, date_ranges
                 )
                 # Include connection_id in the data structure
                 connection_data['connection_id'] = connection.tenant_id
@@ -103,8 +103,7 @@ class XeroCashFlowService:
     async def _process_connection(
         self, 
         connection: XeroConnection, 
-        date_ranges: List[Tuple[str, str]], 
-        report_date: str
+        date_ranges: List[Tuple[str, str]],
     ) -> Dict[str, Any]:
         """
         Process a single connection to get cashflow data.
@@ -112,8 +111,6 @@ class XeroCashFlowService:
         Args:
             connection: Xero connection object
             date_ranges: List of date ranges
-            report_date: Report date
-        
         Returns:
             Dictionary containing connection's cashflow data
         """
