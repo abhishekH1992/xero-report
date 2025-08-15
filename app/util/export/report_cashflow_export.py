@@ -1,4 +1,5 @@
 import os
+import json
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 import openpyxl
@@ -737,8 +738,26 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                         col_idx += 1
                     
                     # Add additional columns
-                    ws[f"{get_column_letter(col_idx)}{current_row}"] = connection.min_balance or ""
+                    min_balance_from_json = ""
+                    try:
+                        json_file_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data', 'min_account_balance_by_account.json')
+                        if os.path.exists(json_file_path):
+                            with open(json_file_path, 'r') as f:
+                                min_balance_data = json.load(f)
+                                account_number = account_data.get('account_number', '')
+                                if account_number:
+                                    for tenant_accounts in min_balance_data.items():
+                                        if account_number in tenant_accounts:
+                                            min_balance_from_json = tenant_accounts[account_number]
+                                            break
+                    except Exception as e:
+                        min_balance_from_json = ""
+                    
+                    ws[f"{get_column_letter(col_idx)}{current_row}"] = min_balance_from_json
                     ws[f"{get_column_letter(col_idx)}{current_row}"].border = border
+                    # Format as currency if there's a value
+                    if min_balance_from_json:
+                        ws[f"{get_column_letter(col_idx)}{current_row}"].number_format = '"$"#,##0.00'
                     col_idx += 1
                     ws[f"{get_column_letter(col_idx)}{current_row}"] = ""  # Next due date
                     ws[f"{get_column_letter(col_idx)}{current_row}"].border = border
