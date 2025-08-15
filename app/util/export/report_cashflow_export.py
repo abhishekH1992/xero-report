@@ -172,18 +172,20 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
         
         # Add difference column if multiple periods
         if len(date_ranges) > 1:
-            latest_period = list(cash_summary["periods"].keys())[0]
-            previous_period = list(cash_summary["periods"].keys())[1]
-            difference = cash_summary["periods"][latest_period]["fully_owned"] - cash_summary["periods"][previous_period]["fully_owned"]
-            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-            cell.value = difference
-            cell.number_format = '"$"#,##0.00'
-            cell.border = border
-            # Add red formatting for negative values
-            if difference < 0:
-                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
-                cell.font = Font(color="FF0000")  # Red text
-            col_idx += 1
+            periods_list = list(cash_summary["periods"].keys())
+            if len(periods_list) >= 2:
+                latest_period = periods_list[0]
+                previous_period = periods_list[1]
+                difference = cash_summary["periods"][latest_period]["fully_owned"] - cash_summary["periods"][previous_period]["fully_owned"]
+                cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                cell.value = difference
+                cell.number_format = '"$"#,##0.00'
+                cell.border = border
+                # Add red formatting for negative values
+                if difference < 0:
+                    cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                    cell.font = Font(color="FF0000")  # Red text
+                col_idx += 1
         
         # Add new column data
         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
@@ -205,18 +207,20 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
         
         # Add difference column if multiple periods
         if len(date_ranges) > 1:
-            latest_period = list(cash_summary["periods"].keys())[0]
-            previous_period = list(cash_summary["periods"].keys())[1]
-            difference = cash_summary["periods"][latest_period]["partially_owned"] - cash_summary["periods"][previous_period]["partially_owned"]
-            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-            cell.value = difference
-            cell.number_format = '"$"#,##0.00'
-            cell.border = border
-            # Add red formatting for negative values
-            if difference < 0:
-                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
-                cell.font = Font(color="FF0000")  # Red text
-            col_idx += 1
+            periods_list = list(cash_summary["periods"].keys())
+            if len(periods_list) >= 2:
+                latest_period = periods_list[0]
+                previous_period = periods_list[1]
+                difference = cash_summary["periods"][latest_period]["partially_owned"] - cash_summary["periods"][previous_period]["partially_owned"]
+                cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                cell.value = difference
+                cell.number_format = '"$"#,##0.00'
+                cell.border = border
+                # Add red formatting for negative values
+                if difference < 0:
+                    cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                    cell.font = Font(color="FF0000")  # Red text
+                col_idx += 1
         
         # Add new column data
         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
@@ -239,19 +243,21 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
         
         # Add difference column if multiple periods
         if len(date_ranges) > 1:
-            latest_period = list(cash_summary["periods"].keys())[0]
-            previous_period = list(cash_summary["periods"].keys())[1]
-            difference = cash_summary["periods"][latest_period]["total_available_cash"] - cash_summary["periods"][previous_period]["total_available_cash"]
-            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-            cell.value = difference
-            cell.number_format = '"$"#,##0.00'
-            cell.border = border
-            cell.font = Font(bold=True)
-            # Add red formatting for negative values
-            if difference < 0:
-                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
-                cell.font = Font(bold=True, color="FF0000")  # Red text
-            col_idx += 1
+            periods_list = list(cash_summary["periods"].keys())
+            if len(periods_list) >= 2:
+                latest_period = periods_list[0]
+                previous_period = periods_list[1]
+                difference = cash_summary["periods"][latest_period]["total_available_cash"] - cash_summary["periods"][previous_period]["total_available_cash"]
+                cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                cell.value = difference
+                cell.number_format = '"$"#,##0.00'
+                cell.border = border
+                cell.font = Font(bold=True)
+                # Add red formatting for negative values
+                if difference < 0:
+                    cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                    cell.font = Font(bold=True, color="FF0000")  # Red text
+                col_idx += 1
         
         # Add new column data
         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
@@ -320,18 +326,20 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
         
         # Add difference column if multiple periods
         if len(date_ranges) > 1:
-            latest_period = list(cash_summary["periods"].keys())[0]
-            previous_period = list(cash_summary["periods"].keys())[1]
-            difference = cash_summary["periods"][latest_period]["minimum_cash_holding_excess"] - cash_summary["periods"][previous_period]["minimum_cash_holding_excess"]
-            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-            cell.value = difference
-            cell.font = Font(bold=True)
-            cell.number_format = '"$"#,##0.00'
-            cell.border = border
-            # Add red formatting for negative values
-            if difference < 0:
-                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
-                cell.font = Font(bold=True, color="FF0000")  # Red text
+            periods_list = list(cash_summary["periods"].keys())
+            if len(periods_list) >= 2:
+                latest_period = periods_list[0]
+                previous_period = periods_list[1]
+                difference = cash_summary["periods"][latest_period]["minimum_cash_holding_excess"] - cash_summary["periods"][previous_period]["minimum_cash_holding_excess"]
+                cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                cell.value = difference
+                cell.font = Font(bold=True)
+                cell.number_format = '"$"#,##0.00'
+                cell.border = border
+                # Add red formatting for negative values
+                if difference < 0:
+                    cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                    cell.font = Font(bold=True, color="FF0000")  # Red text
 
         # Add new column data
         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
@@ -367,18 +375,20 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
         
         # Add difference column if multiple periods
         if len(date_ranges) > 1:
-            latest_period = list(cash_summary["periods"].keys())[0]
-            previous_period = list(cash_summary["periods"].keys())[1]
-            difference = cash_summary["periods"][latest_period]["total_available_cash"] - cash_summary["periods"][previous_period]["total_available_cash"]
-            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-            cell.value = difference
-            cell.number_format = '"$"#,##0.00'
-            cell.border = border
-            # Add red formatting for negative values
-            if difference < 0:
-                cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
-                cell.font = Font(color="FF0000")  # Red text
-            col_idx += 1
+            periods_list = list(cash_summary["periods"].keys())
+            if len(periods_list) >= 2:
+                latest_period = periods_list[0]
+                previous_period = periods_list[1]
+                difference = cash_summary["periods"][latest_period]["total_available_cash"] - cash_summary["periods"][previous_period]["total_available_cash"]
+                cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                cell.value = difference
+                cell.number_format = '"$"#,##0.00'
+                cell.border = border
+                # Add red formatting for negative values
+                if difference < 0:
+                    cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                    cell.font = Font(color="FF0000")  # Red text
+                col_idx += 1
         
         # Add new column data
         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
@@ -436,19 +446,22 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             col_idx += 1
         
         # Add difference column if multiple periods
-        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-        latest_period = list(cash_summary["periods"].keys())[0]
-        previous_period = list(cash_summary["periods"].keys())[1]
-        difference = cash_summary["periods"][latest_period]["total_available_cash"] - cash_summary["periods"][previous_period]["total_available_cash"]
-        cell.value = difference
-        cell.number_format = '"$"#,##0.00'
-        cell.border = border
-        cell.font = Font(bold=True)
-        # Add red formatting for negative values
-        if difference < 0:
-            cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
-            cell.font = Font(bold=True, color="FF0000")  # Red text
-        col_idx += 1
+        if len(date_ranges) > 1:
+            periods_list = list(cash_summary["periods"].keys())
+            if len(periods_list) >= 2:
+                latest_period = periods_list[0]
+                previous_period = periods_list[1]
+                difference = cash_summary["periods"][latest_period]["total_available_cash"] - cash_summary["periods"][previous_period]["total_available_cash"]
+                cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                cell.value = difference
+                cell.number_format = '"$"#,##0.00'
+                cell.border = border
+                cell.font = Font(bold=True)
+                # Add red formatting for negative values
+                if difference < 0:
+                    cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                    cell.font = Font(bold=True, color="FF0000")  # Red text
+                col_idx += 1
             
 
         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
@@ -829,13 +842,15 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                     
                     # Add difference column if multiple periods
                     if len(date_ranges) > 1:
-                        latest_period = list(period_totals.keys())[0]
-                        previous_period = list(period_totals.keys())[1]
-                        difference = period_totals[latest_period] - period_totals[previous_period]
-                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-                        cell.value = difference
-                        cell.number_format = '"$"#,##0.00'
-                        cell.border = border
+                        periods_list = list(period_totals.keys())
+                        if len(periods_list) >= 2:
+                            latest_period = periods_list[0]
+                            previous_period = periods_list[1]
+                            difference = period_totals[latest_period] - period_totals[previous_period]
+                            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                            cell.value = difference
+                            cell.number_format = '"$"#,##0.00'
+                            cell.border = border
                     
                     current_row += 1
                     
@@ -887,18 +902,20 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                     
                     # Add difference column if multiple periods
                     if len(date_ranges) > 1:
-                        latest_excess = period_totals[list(period_totals.keys())[0]] - minimum_cash_holding
-                        previous_excess = period_totals[list(period_totals.keys())[1]] - minimum_cash_holding
-                        excess_difference = latest_excess - previous_excess
-                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-                        cell.value = excess_difference
-                        cell.number_format = '"$"#,##0.00'
-                        cell.border = border
-                        
-                        # Apply red background and text if negative
-                        if excess_difference < 0:
-                            cell.fill = PatternFill("solid", fgColor="FFCCCC")  # Light red background
-                            cell.font = Font(bold=True, color="FF0000")  # Red text
+                        periods_list = list(period_totals.keys())
+                        if len(periods_list) >= 2:
+                            latest_excess = period_totals[periods_list[0]] - minimum_cash_holding
+                            previous_excess = period_totals[periods_list[1]] - minimum_cash_holding
+                            excess_difference = latest_excess - previous_excess
+                            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                            cell.value = excess_difference
+                            cell.number_format = '"$"#,##0.00'
+                            cell.border = border
+                            
+                            # Apply red background and text if negative
+                            if excess_difference < 0:
+                                cell.fill = PatternFill("solid", fgColor="FFCCCC")  # Light red background
+                                cell.font = Font(bold=True, color="FF0000")  # Red text
                     
                     current_row += 2
                 else:
@@ -937,18 +954,20 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                     
                     # Add difference column if multiple periods
                     if len(date_ranges) > 1:
-                        latest_period = list(period_totals.keys())[0]
-                        previous_period = list(period_totals.keys())[1]
-                        difference = period_totals[latest_period] - period_totals[previous_period]
-                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-                        cell.value = difference
-                        cell.number_format = '"$"#,##0.00'
-                        cell.border = border
-                        
-                        # Apply red background and text if negative
-                        if difference < 0:
-                            cell.fill = PatternFill("solid", fgColor="FFCCCC")  # Light red background
-                            cell.font = Font(bold=True, color="FF0000")  # Red text
+                        periods_list = list(period_totals.keys())
+                        if len(periods_list) >= 2:
+                            latest_period = periods_list[0]
+                            previous_period = periods_list[1]
+                            difference = period_totals[latest_period] - period_totals[previous_period]
+                            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                            cell.value = difference
+                            cell.number_format = '"$"#,##0.00'
+                            cell.border = border
+                            
+                            # Apply red background and text if negative
+                            if difference < 0:
+                                cell.fill = PatternFill("solid", fgColor="FFCCCC")  # Light red background
+                                cell.font = Font(bold=True, color="FF0000")  # Red text
                     
                     current_row += 2
         
