@@ -81,6 +81,9 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
         # Get all connections with ownership data
         connections = session.query(XeroConnection).filter(XeroConnection.is_active == True).all()
         
+        # Sort connections by company name (tenant_name) in ascending order
+        connections = sorted(connections, key=lambda x: x.tenant_name.strip())
+        
         # Group connections by ownership
         ownership_groups = {
             "fully_owned": [],
@@ -605,6 +608,9 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             ws.merge_cells(f"A{current_row}:{last_column}{current_row}")
             current_row += 2
             
+            # Sort connections by company name (tenant_name) in ascending order
+            connections_in_group = sorted(connections_in_group, key=lambda x: x.tenant_name.strip())
+            
             # Group connections by bank (ASB, ANZ, etc.)
             bank_groups = {}
             
@@ -620,8 +626,8 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                             'account_data': account_data
                         })
             
-            # Process each bank group
-            for bank_name, bank_accounts in bank_groups.items():
+            # Process each bank group (sorted by bank name for consistent ordering)
+            for bank_name, bank_accounts in sorted(bank_groups.items()):
                 if not bank_accounts:
                     continue
                     
