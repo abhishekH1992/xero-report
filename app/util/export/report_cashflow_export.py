@@ -1,5 +1,6 @@
 import os
 import json
+from pathlib import Path
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 import openpyxl
@@ -769,17 +770,29 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                     # Add additional columns
                     min_balance_from_json = ""
                     try:
-                        json_file_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'data', 'min_account_balance_by_account.json')
-                        if os.path.exists(json_file_path):
+                        # Try multiple approaches to find the JSON file
+                        json_file_path = None
+                        cwd = os.getcwd()
+                        account_balance_json_path = Path(cwd) / "data" / "min_account_balance_by_account.json"
+                        if account_balance_json_path.exists():
+                            json_file_path = account_balance_json_path
+                        
+                        if json_file_path and json_file_path.exists():
                             with open(json_file_path, 'r') as f:
                                 min_balance_data = json.load(f)
                                 account_number = account_data.get('account_number', '')
                                 if account_number:
-                                    for tenant_accounts in min_balance_data.items():
-                                        if account_number in tenant_accounts:
-                                            min_balance_from_json = tenant_accounts[account_number]
+                                    # Remove dashes from account number to match JSON format
+                                    clean_account_number = account_number.replace('-', '')
+                                    
+                                    # Search through all tenant accounts for this account number
+                                    for tenant_id, tenant_accounts in min_balance_data.items():
+                                        if clean_account_number in tenant_accounts:
+                                            min_balance_from_json = tenant_accounts[clean_account_number]
                                             break
                     except Exception as e:
+                        print(f"Error reading JSON: {e}")
+                        print(f"Falling back to database min_balance values")
                         min_balance_from_json = ""
                     
                     ws[f"{get_column_letter(col_idx)}{current_row}"] = min_balance_from_json
