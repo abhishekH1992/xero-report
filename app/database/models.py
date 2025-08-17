@@ -58,6 +58,9 @@ class XeroConnection(Base):
     # Relationship to API logs
     api_logs = relationship("XeroApiLog", back_populates="connection", cascade="all, delete-orphan")
     
+    # Relationship to accounts
+    accounts = relationship("XeroAccount", back_populates="connection", cascade="all, delete-orphan")
+    
     def __repr__(self):
         return f"<XeroConnection(tenant_id={self.tenant_id}, tenant_name={self.tenant_name}, app_id={self.app_id})>"
 
@@ -126,4 +129,37 @@ class ReportQueue(Base):
     failed_at = Column(DateTime, nullable=True)
     
     def __repr__(self):
-        return f"<ReportQueue(job_id={self.job_id}, type={self.job_type}, status={self.status})>" 
+        return f"<ReportQueue(job_id={self.job_id}, type={self.job_type}, status={self.status})>"
+
+
+class XeroCategory(Base):
+    """Model for Xero account categories."""
+    __tablename__ = "xero_category"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    type = Column(String(100), nullable=True)
+    business_type = Column(String(255), nullable=True)
+    
+    # Relationship to accounts
+    accounts = relationship("XeroAccount", back_populates="category")
+    
+    def __repr__(self):
+        return f"<XeroCategory(id={self.id}, name='{self.name}', type='{self.type}')>"
+
+
+class XeroAccount(Base):
+    """Model for Xero accounts linked to categories."""
+    __tablename__ = "xero_accounts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    connection_id = Column(Integer, ForeignKey("xero_connections.id"), nullable=False, index=True)
+    category_id = Column(Integer, ForeignKey("xero_category.id"), nullable=False, index=True)
+    account_code = Column(String(50), nullable=False, index=True)
+    
+    # Relationships
+    connection = relationship("XeroConnection", back_populates="accounts")
+    category = relationship("XeroCategory", back_populates="accounts")
+    
+    def __repr__(self):
+        return f"<XeroAccount(id={self.id}, account_code='{self.account_code}')>" 
