@@ -666,6 +666,34 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                     cell.fill = header_fill
                     cell.alignment = header_alignment
                     cell.border = border
+
+                # Merge and write Spent header (immediately after Balance)
+                spent_cols = ["GST Payment", "Interest Payment", "Loan Payment", "Payroll", "Rates", "Others", "GST Refund"]
+                spent_start_idx = 4 + balance_cols
+                spent_end_idx = spent_start_idx + len(spent_cols) - 1
+                spent_start_col = get_column_letter(spent_start_idx)
+                spent_end_col = get_column_letter(spent_end_idx)
+                ws.merge_cells(f"{spent_start_col}{current_row}:{spent_end_col}{current_row}")
+                cell = ws[f"{spent_start_col}{current_row}"]
+                cell.value = "Spent"
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+                cell.border = border
+
+                # Merge and write Received header (immediately after Balance)
+                received_cols = ["Income", "Rental Income"]
+                received_start_idx = spent_end_idx + 1
+                received_end_idx   = received_start_idx + len(received_cols) - 1
+                received_start_col = get_column_letter(received_start_idx)
+                received_end_col = get_column_letter(received_end_idx)
+                ws.merge_cells(f"{received_start_col}{current_row}:{received_end_col}{current_row}")
+                cell = ws[f"{received_start_col}{current_row}"]
+                cell.value = "Received"
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+                cell.border = border
                 
                 # Add additional columns with blue background
                 additional_headers = [
@@ -675,15 +703,13 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                 ]
                 
                 # Write additional headers
-                for col_idx, header in enumerate(additional_headers, 4 + balance_cols):
+                for col_idx, header in enumerate(additional_headers, received_end_idx + 1):
                     cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
                     cell.value = header
                     cell.font = header_font
                     cell.fill = header_fill
                     cell.alignment = header_alignment
                     cell.border = border
-                
-
                 
                 current_row += 1
                 
@@ -712,6 +738,24 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                 if len(date_ranges) > 1:
                     cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
                     cell.value = "Difference"
+                    cell.font = Font(bold=True, color="FFFFFF")
+                    cell.fill = header_fill
+                    cell.alignment = Alignment("center")
+                    cell.border = border
+                    col_idx += 1
+
+                for val in spent_cols:
+                    cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                    cell.value = val
+                    cell.font = Font(bold=True, color="FFFFFF")
+                    cell.fill = header_fill
+                    cell.alignment = Alignment("center")
+                    cell.border = border
+                    col_idx += 1
+
+                for val in received_cols:
+                    cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                    cell.value = val
                     cell.font = Font(bold=True, color="FFFFFF")
                     cell.fill = header_fill
                     cell.alignment = Alignment("center")
@@ -771,6 +815,20 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                             cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red
                             cell.font = Font(color="FF0000")  # Red text
                         
+                        col_idx += 1
+
+                    for _ in spent_cols:
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = 0
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        col_idx += 1
+
+                    for _ in received_cols:
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = 0
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
                         col_idx += 1
                     
                     # Add additional columns
@@ -861,6 +919,20 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                             cell.font = Font(bold=True, color="FF0000")
                         
                         col_idx += 1
+
+                    for _ in spent_cols:
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = 0
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        col_idx += 1
+
+                    for _ in received_cols:
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = 0
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        col_idx += 1
                     
                     # Add blank columns for totals
                     for _ in range(3):  # Minimum Balance, Next due date, Payment amount
@@ -887,7 +959,7 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             ws.column_dimensions[get_column_letter(i)].width = 20
         
         # Set width for additional columns
-        for i in range(4 + balance_cols, 4 + balance_cols + 3):
+        for i in range(4 + balance_cols, 4 + balance_cols + 12):
             ws.column_dimensions[get_column_letter(i)].width = 20
         
     finally:
