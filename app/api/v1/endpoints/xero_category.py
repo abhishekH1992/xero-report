@@ -29,6 +29,7 @@ async def upload_categories_accounts(
     - Name: Category name or account description
     - AccountType: Category type
     - BusinessType: Business classification
+    - IsIncome: Whether category represents income (true/false, yes/no, 1/0)
     """
     
     # Validate file type
@@ -108,6 +109,16 @@ def process_categories_accounts(df: pd.DataFrame, db: Session) -> dict:
                 category_type = str(row.get('AccountType', '')).strip() if 'AccountType' in row and pd.isna(row['AccountType']) == False else None
                 business_type = str(row.get('BusinessType', '')).strip() if 'BusinessType' in row and pd.isna(row['BusinessType']) == False else None
                 
+                # Process IsIncome column - handle various formats (true/false, yes/no, 1/0)
+                is_income = None
+                if 'IsIncome' in row and pd.isna(row['IsIncome']) == False:
+                    income_value = str(row['IsIncome']).strip().lower()
+                    if income_value in ['true', 'yes', '1', 't', 'y']:
+                        is_income = True
+                    elif income_value in ['false', 'no', '0', 'f', 'n']:
+                        is_income = False
+                    # If it's neither true nor false, keep as None (nullable)
+                
                 # Create or update category
                 category = db.query(XeroCategory).filter(
                     XeroCategory.name == category_name
@@ -117,13 +128,15 @@ def process_categories_accounts(df: pd.DataFrame, db: Session) -> dict:
                     # Update existing category
                     category.type = category_type
                     category.business_type = business_type
+                    category.is_income = is_income
                     categories_updated += 1
                 else:
                     # Create new category
                     category = XeroCategory(
                         name=category_name,
                         type=category_type,
-                        business_type=business_type
+                        business_type=business_type,
+                        is_income=is_income
                     )
                     db.add(category)
                     categories_created += 1

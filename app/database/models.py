@@ -140,12 +140,13 @@ class XeroCategory(Base):
     name = Column(String(255), nullable=False, index=True)
     type = Column(String(100), nullable=True)
     business_type = Column(String(255), nullable=True)
+    is_income = Column(Boolean, default=False, nullable=False)  # Indicates if category represents income
     
     # Relationship to accounts
     accounts = relationship("XeroAccount", back_populates="category")
     
     def __repr__(self):
-        return f"<XeroCategory(id={self.id}, name='{self.name}', type='{self.type}')>"
+        return f"<XeroCategory(id={self.id}, name='{self.name}', type='{self.type}', is_income={self.is_income})>"
 
 
 class XeroAccount(Base):
