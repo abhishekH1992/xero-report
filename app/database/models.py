@@ -157,10 +157,11 @@ class XeroAccount(Base):
     connection_id = Column(Integer, ForeignKey("xero_connections.id"), nullable=False, index=True)
     category_id = Column(Integer, ForeignKey("xero_category.id"), nullable=False, index=True)
     account_code = Column(String(50), nullable=False, index=True)
+    name = Column(String(500), nullable=True)  # Account name/description
     
     # Relationships
     connection = relationship("XeroConnection", back_populates="accounts")
     category = relationship("XeroCategory", back_populates="accounts")
     
     def __repr__(self):
-        return f"<XeroAccount(id={self.id}, account_code='{self.account_code}')>" 
+        return f"<XeroAccount(id={self.id}, account_code='{self.account_code}', name='{self.name}')>" 

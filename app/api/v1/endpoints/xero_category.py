@@ -9,6 +9,7 @@ import re
 from app.database.database import get_db
 from app.database.models import XeroCategory, XeroAccount, XeroConnection
 from app.util.auth import api_key_auth
+from sqlalchemy import func
 
 router = APIRouter(
     prefix="/categories",
@@ -164,12 +165,12 @@ def process_categories_accounts(df: pd.DataFrame, db: Session) -> dict:
                     
                 account_description = str(row['Name']).strip()
                 
-                # Extract company name and account code
-                company_name, account_code = extract_account_details(account_description)
+                # Extract company name, account code, and account name
+                company_name, account_code, account_name = extract_account_details(account_description)
                 
                 # Debug: Print what we're processing
                 print(f"Row {index + 1}: Processing '{account_description}'")
-                print(f"  -> Company: '{company_name}', Account Code: '{account_code}'")
+                print(f"  -> Company: '{company_name}', Account Code: '{account_code}', Account Name: '{account_name}'")
                 print(f"  -> Company (trimmed): '{company_name.strip()}'")
                 
                 if not company_name:
@@ -193,9 +194,12 @@ def process_categories_accounts(df: pd.DataFrame, db: Session) -> dict:
                 # Find connection by company name (trim both sides for comparison)
                 trimmed_company_name = company_name.strip()
                 print(f"  -> Looking for company: '{trimmed_company_name}'")
+                print(f"  -> Company length: {len(trimmed_company_name)}")
+                print(f"  -> Company bytes: {trimmed_company_name.encode('utf-8')}")
+                print(f"  -> Company repr: {repr(trimmed_company_name)}")
                 
                 connection = db.query(XeroConnection).filter(
-                    XeroConnection.tenant_name == trimmed_company_name
+                    func.trim(XeroConnection.tenant_name) == trimmed_company_name
                 ).first()
                 
                 # If not found, try a more flexible search with trimmed names
@@ -209,8 +213,18 @@ def process_categories_accounts(df: pd.DataFrame, db: Session) -> dict:
                             print(f"  -> Found match: '{db_tenant_name}' (ID: {conn.id})")
                             connection = conn
                             break
+                        elif trimmed_company_name in db_tenant_name or db_tenant_name in trimmed_company_name:
+                            print(f"  -> Found partial match: '{db_tenant_name}' (ID: {conn.id})")
+                            print(f"  -> Partial match type: {'CSV in DB' if trimmed_company_name in db_tenant_name else 'DB in CSV'}")
+                            connection = conn
+                            break
                         else:
                             print(f"  -> Checking: '{db_tenant_name}' vs '{trimmed_company_name}'")
+                            print(f"  -> DB name length: {len(db_tenant_name)}, Search name length: {len(trimmed_company_name)}")
+                            print(f"  -> DB name bytes: {db_tenant_name.encode('utf-8')}")
+                            print(f"  -> Search name bytes: {trimmed_company_name.encode('utf-8')}")
+                            print(f"  -> DB name repr: {repr(db_tenant_name)}")
+                            print(f"  -> Search name repr: {repr(trimmed_company_name)}")
                 
                 if not connection:
                     # Company not found - add to missing companies list
@@ -232,13 +246,15 @@ def process_categories_accounts(df: pd.DataFrame, db: Session) -> dict:
                     
                     if existing_account:
                         # Update existing account (if needed)
+                        existing_account.name = account_name
                         accounts_updated += 1
                     else:
                         # Create new account
                         account = XeroAccount(
                             connection_id=connection.id,
                             category_id=current_category.id,
-                            account_code=account_code
+                            account_code=account_code,
+                            name=account_name
                         )
                         db.add(account)
                         accounts_created += 1
@@ -282,24 +298,50 @@ def process_categories_accounts(df: pd.DataFrame, db: Session) -> dict:
 
 def extract_account_details(account_description: str) -> tuple:
     """
-    Extract company name and account code from account description.
+    Extract company name, account code, and account name from account description.
     
     Expected format: "Company Name : ACCOUNT_CODE Category - Subcategory"
-    Returns: (company_name, account_code)
+    Returns: (company_name, account_code, account_name)
     """
     
     # Split by colon to separate company from account details
     if ':' not in account_description:
-        return None, None
+        print(f"DEBUG: No colon found in '{account_description}'")
+        return None, None, None
     
     company_part, account_part = account_description.split(':', 1)
     company_name = company_part.strip()
+    print(f"DEBUG: company_part='{company_part}' -> company_name='{company_name}'")
+    print(f"DEBUG: account_part='{account_part}'")
     
     # Extract account code (first number after colon)
     account_code_match = re.search(r'(\d+)', account_part)
     if not account_code_match:
-        return company_name, None  # Company found but no account code
+        print(f"DEBUG: No account code found in '{account_part}'")
+        return company_name, None, None  # Company found but no account code
     
     account_code = account_code_match.group(1)
+    print(f"DEBUG: Found account code '{account_code}' at position {account_code_match.start()}-{account_code_match.end()}")
     
-    return company_name, account_code
+    # Extract account name (everything after the account code)
+    account_code_end = account_code_match.end()
+    raw_account_name = account_part[account_code_end:]
+    account_name = raw_account_name.strip()
+    
+    print(f"DEBUG: account_code_end={account_code_end}")
+    print(f"DEBUG: raw_account_name='{raw_account_name}'")
+    print(f"DEBUG: stripped account_name='{account_name}'")
+    
+    # Simple cleanup - just remove leading/trailing spaces and normalize internal spaces
+    if account_name:
+        # Remove leading/trailing spaces and normalize multiple spaces to single space
+        account_name = ' '.join(account_name.split())
+        print(f"DEBUG: cleaned account_name='{account_name}'")
+        # If empty after cleaning, set to None
+        if not account_name:
+            account_name = None
+            print(f"DEBUG: account_name set to None")
+    else:
+        print(f"DEBUG: account_name is empty after stripping")
+    
+    return company_name, account_code, account_name
