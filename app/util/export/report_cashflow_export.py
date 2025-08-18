@@ -293,11 +293,12 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             cell.number_format = '"$"#,##0.00'
             cell.border = border
         
-        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-        cell.value = 0
-        cell.number_format = '"$"#,##0.00'
-        cell.border = border
-        col_idx += 1
+        if len(date_ranges) > 1:
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = 0
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+            col_idx += 1
 
         # Add new column data
         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
@@ -347,12 +348,13 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                     cell.font = Font(bold=True, color="FF0000")  # Red text
 
         # Add new column data
-        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-        cell.value = 0
-        cell.number_format = '"$"#,##0.00'
-        cell.border = border
-        cell.font = Font(bold=True)
-        col_idx += 1
+        if len(date_ranges) > 1:
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = 0
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+            cell.font = Font(bold=True)
+            col_idx += 1
         
         # Add new column data
         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
@@ -489,11 +491,12 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
             col_idx += 1
         
         # Add difference column if multiple periods
-        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-        cell.value = 0
-        cell.number_format = '"$"#,##0.00'
-        cell.border = border
-        col_idx += 1
+        if len(date_ranges) > 1:
+            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+            cell.value = 0
+            cell.number_format = '"$"#,##0.00'
+            cell.border = border
+            col_idx += 1
             
         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
         cell.value = "SW Key China"
