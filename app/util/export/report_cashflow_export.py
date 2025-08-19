@@ -69,6 +69,10 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                              header_font, header_fill, header_alignment, title_font, title_alignment, border, report_date: str = None):
     """Create comprehensive Bank Balance Report grouped by ownership."""
     
+    # Helper to map column header to data key
+    def _col_name_to_key(name: str) -> str:
+        return name.strip().lower().replace(" ", "_")
+    
     # Get ownership data from database
     from app.database.database import engine
     from app.database.models import XeroConnection
@@ -820,18 +824,40 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                         
                         col_idx += 1
 
-                    for _ in spent_cols:
-                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-                        cell.value = 0
-                        cell.number_format = '"$"#,##0.00'
-                        cell.border = border
+                    # Add spent columns with actual data
+                    spent_data = account_data.get('spent', {})
+                    
+                    for col_name in spent_cols:
+                        data_key = _col_name_to_key(col_name)
+                        if data_key and data_key in spent_data:
+                            total = spent_data[data_key].get('total', 0.0)
+                            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                            cell.value = float(total) if total else 0
+                            cell.number_format = '"$"#,##0.00'
+                            cell.border = border
+                        else:
+                            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                            cell.value = 0
+                            cell.number_format = '"$"#,##0.00'
+                            cell.border = border
                         col_idx += 1
 
-                    for _ in received_cols:
-                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-                        cell.value = 0
-                        cell.number_format = '"$"#,##0.00'
-                        cell.border = border
+                    # Add received columns with actual data
+                    received_data = account_data.get('received', {})
+                    
+                    for col_name in received_cols:
+                        data_key = _col_name_to_key(col_name)
+                        if data_key and data_key in received_data:
+                            total = received_data[data_key].get('total', 0.0)
+                            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                            cell.value = float(total) if total else 0
+                            cell.number_format = '"$"#,##0.00'
+                            cell.border = border
+                        else:
+                            cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                            cell.value = 0
+                            cell.number_format = '"$"#,##0.00'
+                            cell.border = border
                         col_idx += 1
                     
                     # Add additional columns
@@ -923,16 +949,57 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                         
                         col_idx += 1
 
-                    for _ in spent_cols:
+                    # Calculate and add spent column totals
+                    spent_totals = {
+                        "gst_payment": 0.0,
+                        "interest_payment": 0.0,
+                        "loan_payment": 0.0,
+                        "payroll": 0.0,
+                        "rates": 0.0,
+                        "others": 0.0,
+                        "gst_refund": 0.0
+                    }
+                    
+                    # Sum up spent totals from all accounts in this bank
+                    for bank_account in bank_accounts:
+                        account_data = bank_account['account_data']
+                        spent_data = account_data.get('spent', {})
+                        for key in spent_totals:
+                            if key in spent_data:
+                                spent_totals[key] += spent_data[key].get('total', 0.0)
+                    
+                    # Write spent totals
+                    for col_name in spent_cols:
+                        data_key = _col_name_to_key(col_name)
+                        total = spent_totals.get(data_key, 0.0) if data_key else 0.0
                         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-                        cell.value = 0
+                        cell.value = float(total)
+                        cell.font = Font(bold=True)
                         cell.number_format = '"$"#,##0.00'
                         cell.border = border
                         col_idx += 1
 
-                    for _ in received_cols:
+                    # Calculate and add received column totals
+                    received_totals = {
+                        "income": 0.0,
+                        "rental_income": 0.0
+                    }
+                    
+                    # Sum up received totals from all accounts in this bank
+                    for bank_account in bank_accounts:
+                        account_data = bank_account['account_data']
+                        received_data = account_data.get('received', {})
+                        for key in received_totals:
+                            if key in received_data:
+                                received_totals[key] += received_data[key].get('total', 0.0)
+                    
+                    # Write received totals
+                    for col_name in received_cols:
+                        data_key = _col_name_to_key(col_name)
+                        total = received_totals.get(data_key, 0.0) if data_key else 0.0
                         cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
-                        cell.value = 0
+                        cell.value = float(total)
+                        cell.font = Font(bold=True)
                         cell.number_format = '"$"#,##0.00'
                         cell.border = border
                         col_idx += 1
