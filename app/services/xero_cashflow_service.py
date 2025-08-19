@@ -499,15 +499,15 @@ class XeroCashFlowService:
             # 1.5. Merge and categorize all transactions and payments
             all_line_items = detailed_transactions + detailed_payments
             
-            # Simple categorization: just spend vs received (no subcategories yet)
-            simple_categorized = self._simple_categorize_spend_received(all_line_items)
+            # Get both simple and subcategorized data
+            categorized_data = self.get_categorized_cashflow(all_line_items, connection_db_id)
             
             # Write debug data to JSON
-            with open("simple_categorized_debug.json", "w") as f:
-                import json
-                json.dump(simple_categorized, f, indent=2, default=str)
+            # with open("simple_categorized_debug.json", "w") as f:
+            #     import json
+            #     json.dump(categorized_data, f, indent=2, default=str)
             
-            return simple_categorized
+            return categorized_data
             
         except Exception as e:
             print(f"[CASHFLOW] Error getting transaction data: {str(e)}")
@@ -890,6 +890,198 @@ class XeroCashFlowService:
                 })
         
         return simple_categorized
+
+    def get_categorized_cashflow(self, all_line_items: List[Dict[str, Any]], connection_id: int) -> Dict[str, Any]:
+        """
+        Get both simple and subcategorized cashflow data.
+        
+        Args:
+            all_line_items: List of all line items from transactions and payments
+            connection_id: The database connection ID
+            
+        Returns:
+            Dictionary containing both simple and subcategorized data
+        """
+        # Get simple categorization first
+        simple_categorized = self._simple_categorize_spend_received(all_line_items)
+        
+        # Then apply subcategory mapping
+        subcategorized = self._categorize_to_subcategories(simple_categorized, connection_id)
+        
+        return subcategorized
+
+    def _get_account_mappings(self, connection_id: int) -> Dict[str, Dict[str, Any]]:
+        """
+        Get account code mappings from database for a specific connection.
+        
+        Args:
+            connection_id: The database connection ID
+            
+        Returns:
+            Dictionary mapping account codes to their category information
+        """
+        try:
+            from app.database.database import get_db
+            from app.database.models import XeroAccount, XeroCategory
+            
+            db = next(get_db())
+            accounts = db.query(
+                XeroAccount.account_code,
+                XeroAccount.connection_id,
+                XeroCategory.name,
+                XeroCategory.type,
+                XeroCategory.is_income
+            ).join(
+                XeroCategory, XeroAccount.category_id == XeroCategory.id
+            ).filter(
+                XeroAccount.connection_id == connection_id
+            ).all()
+            
+            # Create mapping: account_code -> category info
+            account_mappings = {}
+            for account in accounts:
+                account_mappings[account.account_code] = {
+                    "name": account.name,
+                    "type": account.type,
+                    "is_income": account.is_income
+                }
+            
+            return account_mappings
+            
+        except Exception as e:
+            print(f"[CASHFLOW] Error getting account mappings: {e}")
+            return {}
+
+    def _categorize_to_subcategories(self, simple_categorized: Dict[str, Any], connection_id: int) -> Dict[str, Any]:
+        """
+        Categorize transactions into subcategories based on account codes and database categories.
+        
+        Args:
+            simple_categorized: The simple categorized data
+            connection_id: The database connection ID
+            
+        Returns:
+            Data categorized into subcategories
+        """
+        # Get account mappings from database
+        account_mappings = self._get_account_mappings(connection_id)
+        
+        # Initialize subcategory structure with totals
+        subcategorized = {
+            "spent": {
+                "gst_payment": {"total": 0.0, "data": []},
+                "interest_payment": {"total": 0.0, "data": []},
+                "loan_payment": {"total": 0.0, "data": []},
+                "payroll": {"total": 0.0, "data": []},
+                "rates": {"total": 0.0, "data": []},
+                "others": {"total": 0.0, "data": []},
+                "gst_refund": {"total": 0.0, "data": []}
+            },
+            "received": {
+                "income": {"total": 0.0, "data": []},
+                "rental_income": {"total": 0.0, "data": []}
+            }
+        }
+        
+        # Process spent transactions
+        for transaction in simple_categorized.get("spent", {}).get("data", []):
+            # Split transaction based on line items and their distributed amounts
+            for line_item in transaction.get("lineItems", []):
+                account_code = line_item.get("accountCode")
+                if not account_code:
+                    continue
+                
+                category_info = account_mappings.get(account_code, {})
+                category_name = category_info.get("name", "").lower()
+                category_type = category_info.get("type", "").lower()
+                
+                # Use distributedAmount if available, otherwise use transaction total
+                # For spent transactions, we need to calculate the amount for this line item
+                if "distributedAmount" in line_item:
+                    amount_for_category = line_item.get("distributedAmount", 0.0)
+                else:
+                    # If no distributedAmount, calculate proportionally from transaction total
+                    transaction_total = float(transaction.get("total", 0.0))
+                    line_amount = float(line_item.get("lineAmount", 0.0))
+                    total_line_amounts = sum(float(li.get("lineAmount", 0.0)) for li in transaction.get("lineItems", []))
+                    
+                    if total_line_amounts > 0:
+                        amount_for_category = (line_amount / total_line_amounts) * transaction_total
+                    else:
+                        amount_for_category = transaction_total
+                
+                # Create a transaction entry for this line item
+                line_transaction = {
+                    "transaction_id": transaction["transaction_id"],
+                    "type": transaction["type"],
+                    "lineItems": [line_item]
+                }
+                
+                # Categorize based on category name
+                if "interest" in category_name:
+                    subcategorized["spent"]["interest_payment"]["data"].append(line_transaction)
+                    subcategorized["spent"]["interest_payment"]["total"] += amount_for_category
+                elif "staff" in category_name or "payroll" in category_name:
+                    subcategorized["spent"]["payroll"]["data"].append(line_transaction)
+                    subcategorized["spent"]["payroll"]["total"] += amount_for_category
+                elif "rates" in category_name:
+                    subcategorized["spent"]["rates"]["data"].append(line_transaction)
+                    subcategorized["spent"]["rates"]["total"] += amount_for_category
+                elif "gst" in category_name and "refund" not in category_name:
+                    subcategorized["spent"]["gst_payment"]["data"].append(line_transaction)
+                    subcategorized["spent"]["gst_payment"]["total"] += amount_for_category
+                elif "loan" in category_name:
+                    subcategorized["spent"]["loan_payment"]["data"].append(line_transaction)
+                    subcategorized["spent"]["loan_payment"]["total"] += amount_for_category
+                elif "gst" in category_name and "refund" in category_name:
+                    subcategorized["spent"]["gst_refund"]["data"].append(line_transaction)
+                    subcategorized["spent"]["gst_refund"]["total"] += amount_for_category
+                else:
+                    subcategorized["spent"]["others"]["data"].append(line_transaction)
+                    subcategorized["spent"]["others"]["total"] += amount_for_category
+        
+                # Process received transactions
+        for transaction in simple_categorized.get("received", {}).get("data", []):
+            # Split transaction based on line items and their distributed amounts
+            for line_item in transaction.get("lineItems", []):
+                account_code = line_item.get("accountCode")
+                if not account_code:
+                    continue
+                
+                category_info = account_mappings.get(account_code, {})
+                category_type = category_info.get("type", "").lower()
+                
+                # Use distributedAmount if available, otherwise use transaction total
+                if "distributedAmount" in line_item:
+                    amount_for_category = line_item.get("distributedAmount", 0.0)
+                else:
+                    # If no distributedAmount, calculate proportionally from transaction total
+                    transaction_total = float(transaction.get("total", 0.0))
+                    line_amount = float(line_item.get("lineAmount", 0.0))
+                    total_line_amounts = sum(float(li.get("lineAmount", 0.0)) for li in transaction.get("lineItems", []))
+                    
+                    if total_line_amounts > 0:
+                        amount_for_category = (line_amount / total_line_amounts) * transaction_total
+                    else:
+                        amount_for_category = transaction_total
+                
+                # Create a transaction entry for this line item
+                line_transaction = {
+                    "transaction_id": transaction["transaction_id"],
+                    "type": transaction["type"],
+                    "lineItems": [line_item]
+                }
+                
+                # Check if it's rental income
+                if category_type == "rent":
+                    subcategorized["received"]["rental_income"]["data"].append(line_transaction)
+                    subcategorized["received"]["rental_income"]["total"] += amount_for_category
+                else:
+                    # All other income goes to general income
+                    subcategorized["received"]["income"]["data"].append(line_transaction)
+                    subcategorized["received"]["income"]["total"] += amount_for_category
+        
+        return subcategorized
 
     def _process_line_items_with_distribution(self, line_items: List[Dict[str, Any]], payment_total: float) -> List[Dict[str, Any]]:
         """

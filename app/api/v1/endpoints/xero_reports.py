@@ -125,31 +125,30 @@ async def get_cashflow_report(
         )
         
         # Extract data and errors from result
-        # cashflow_data = result.get("data", {})
-        # errors = result.get("errors", [])
+        cashflow_data = result.get("data", {})
+        errors = result.get("errors", [])
         
-        # # Calculate date ranges for export
-        # date_ranges = calculate_date_ranges(report_date_str, period, period_of)
+        # Calculate date ranges for export
+        date_ranges = calculate_date_ranges(report_date_str, period, period_of)
         
-        # # Export to Excel - use absolute path to ensure both app and worker use same location
-        # excel_file_path = export_cashflow_to_excel(
-        #     cashflow_data=cashflow_data,
-        #     date_ranges=date_ranges,
-        #     filename="cashflow_report",
-        #     output_dir=os.getenv('OUTPUT_DIR'),
-        #     report_date=report_date_str
-        # )
+        # Export to Excel - use absolute path to ensure both app and worker use same location
+        excel_file_path = export_cashflow_to_excel(
+            cashflow_data=cashflow_data,
+            date_ranges=date_ranges,
+            filename="cashflow_report",
+            output_dir=os.getenv('OUTPUT_DIR'),
+            report_date=report_date_str
+        )
 
-        # # Generate JSON response
-        # json_response = generate_cashflow_json_response(
-        #     cashflow_data=cashflow_data,
-        #     date_ranges=date_ranges,
-        #     excel_file_path=excel_file_path,
-        #     errors=errors
-        # )
+        # Generate JSON response
+        json_response = generate_cashflow_json_response(
+            cashflow_data=cashflow_data,
+            date_ranges=date_ranges,
+            excel_file_path=excel_file_path,
+            errors=errors
+        )
         
-        # return json_response
-        return result
+        return json_response
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating CashFlow report: {str(e)}")
