@@ -14,7 +14,7 @@ from app.services.xero_auth import XeroAuthService
 from app.services.xero_cashflow_service import XeroCashFlowService
 from app.services.db_queue_service import DatabaseQueueService
 from app.util.report_export import export_report_to_excel, generate_system_comments
-from app.util.report_helper import calculate_aging_bucket, generate_bucket_names, process_financial_item
+from app.util.report_helper import calculate_aging_bucket, generate_bucket_names, process_financial_item, calculate_date_ranges
 from app.util.export.report_cashflow_export import export_cashflow_to_excel, generate_cashflow_json_response
 from app.util.auth import api_key_auth
 
@@ -129,7 +129,6 @@ async def get_cashflow_report(
         errors = result.get("errors", [])
         
         # Calculate date ranges for export
-        from app.util.report_helper import calculate_date_ranges
         date_ranges = calculate_date_ranges(report_date_str, period, period_of)
         
         # Export to Excel - use absolute path to ensure both app and worker use same location

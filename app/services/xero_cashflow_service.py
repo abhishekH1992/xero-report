@@ -154,8 +154,6 @@ class XeroCashFlowService:
             except Exception as e:
                 print(f"[CASHFLOW] Error processing period {start_date}-{end_date}: {str(e)}")
                 continue
-
-        print(f"[CASHFLOW] Connection data: {connection_data}")
         
         return connection_data
     

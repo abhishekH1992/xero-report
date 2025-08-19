@@ -1015,7 +1015,7 @@ def generate_cashflow_json_response(
             }
             
             # Process each period
-            for start_date, end_date in date_ranges:
+            for key, (start_date, end_date) in enumerate(date_ranges):
                 period_key = f"{start_date}_{end_date}"
                 period_data = account_data.get('periods', {}).get(period_key, {})
                 
@@ -1024,7 +1024,9 @@ def generate_cashflow_json_response(
                     "opening_balance": period_data.get('opening_balance', 0),
                     "cash_received": period_data.get('cash_received', 0),
                     "cash_spent": period_data.get('cash_spent', 0),
-                    "closing_balance": period_data.get('closing_balance', 0)
+                    "closing_balance": period_data.get('closing_balance', 0),
+                    "spent": account_data.get('spent', {}),
+                    "received": account_data.get('received', {})
                 }
                 bank_info["periods"].append(period_info)
             
