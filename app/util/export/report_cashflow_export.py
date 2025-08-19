@@ -1091,10 +1091,14 @@ def generate_cashflow_json_response(
                     "opening_balance": period_data.get('opening_balance', 0),
                     "cash_received": period_data.get('cash_received', 0),
                     "cash_spent": period_data.get('cash_spent', 0),
-                    "closing_balance": period_data.get('closing_balance', 0),
-                    "spent": account_data.get('spent', {}),
-                    "received": account_data.get('received', {})
+                    "closing_balance": period_data.get('closing_balance', 0)
                 }
+
+                # Only include spent/received if they exist for this specific period (key == 0)
+                if 'spent' in period_data:
+                    period_info['spent'] = period_data['spent']
+                if 'received' in period_data:
+                    period_info['received'] = period_data['received']
                 bank_info["periods"].append(period_info)
             
             connection_info["banks"].append(bank_info)

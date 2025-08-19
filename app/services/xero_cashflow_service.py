@@ -145,15 +145,21 @@ class XeroCashFlowService:
                             account_data, 
                             start_date, 
                             end_date, 
-                            key, 
                             accounting_api,
                             str(connection.tenant_id),
-                            connection.id
+                            connection.id,
+                            key
                         )
+                            
                         
             except Exception as e:
                 print(f"[CASHFLOW] Error processing period {start_date}-{end_date}: {str(e)}")
                 continue
+        
+        # Calculate final totals and summaries
+        # final_totals = self._calculate_final_totals(connection_data)
+        final_totals = {}
+        connection_data["final_totals"] = final_totals
         
         return connection_data
     
@@ -390,7 +396,7 @@ class XeroCashFlowService:
     
     def _add_period_data_to_connection(self, connection_data: Dict[str, Any], account_details: Any, 
                                       period_data: Dict[str, Any], start_date: str, end_date: str, 
-                                      key: int, accounting_api: AccountingApi, tenant_id: str, connection_db_id: int):
+                                      accounting_api: AccountingApi, tenant_id: str, connection_db_id: int, key: int):
         """
         Add period data to connection data structure.
         
@@ -422,43 +428,41 @@ class XeroCashFlowService:
                 "periods": {},
                 "spent": {},
                 "received": {}
+                # Do NOT initialize spent/received here - they will be added only for key == 0
             }
             connection_data["accounts"].append(existing_account)
         
         # Add period data
         period_key = f"{start_date}_{end_date}"
-        existing_account["periods"][period_key] = {
+        period_info = {
             "opening_balance": period_data.get("opening_balance", 0),
             "cash_received": period_data.get("cash_received", 0),
             "cash_spent": period_data.get("cash_spent", 0),
             "closing_balance": period_data.get("closing_balance", 0)
         }
-
-        # Collect bank transaction data for all periods to capture actual balance changes
-        bank_transaction_data = self._get_bank_transaction_data(
-            accounting_api, tenant_id, account_id, start_date, end_date, connection_db_id
-        )
         
-        # If this is the first time we're adding spent/received data, initialize it
-        if "spent" not in existing_account or not existing_account["spent"]:
+        if key == 0:
+            # Only for the most recent period: collect transaction data and add spent/received
+            bank_transaction_data = self._get_bank_transaction_data(
+                accounting_api, tenant_id, account_id, start_date, end_date, connection_db_id
+            )
+            period_info["spent"] = bank_transaction_data.get("spent", {})
+            period_info["received"] = bank_transaction_data.get("received", {})
+                
+            # Also set the account-level spent/received for the first time
             existing_account["spent"] = bank_transaction_data.get("spent", {})
             existing_account["received"] = bank_transaction_data.get("received", {})
         else:
-            # Merge the data from this period with existing data
-            for category in ["spent", "received"]:
-                for subcategory in bank_transaction_data.get(category, {}):
-                    if subcategory not in existing_account[category]:
-                        existing_account[category][subcategory] = {"total": 0.0, "data": []}
-                    
-                    # Add totals
-                    existing_account[category][subcategory]["total"] += bank_transaction_data[category][subcategory]["total"]
-                    # Extend data arrays
-                    existing_account[category][subcategory]["data"].extend(bank_transaction_data[category][subcategory]["data"])
+            # For older periods (key > 0): ensure NO spent/received fields exist
+            # This ensures older periods are completely clean
+            pass
+        
+        existing_account["periods"][period_key] = period_info
 
 
     def _get_bank_transaction_data(self, accounting_api: AccountingApi, tenant_id: str, account_id: str, start_date: str, end_date: str, connection_db_id: int) -> Dict[str, Any]:
         """
-        Get bank transaction data for a specific date range.
+        Get bank transaction and payment data for a specific date range.
         
         Args:
             accounting_api: Xero Accounting API client
@@ -466,6 +470,7 @@ class XeroCashFlowService:
             account_id: Account ID
             start_date: Start date in YYYY-MM-DD format
             end_date: End date in YYYY-MM-DD format
+            connection_db_id: Database connection ID
             
         Returns:
             Dictionary with spent and received categories
@@ -476,19 +481,38 @@ class XeroCashFlowService:
                 accounting_api, tenant_id, account_id, start_date, end_date
             )
             
-            # 1.2. Get specific bank transaction details with line items
+            # 1.2. Get all payments for the account
+            all_payments = self._get_all_payments_for_account(
+                accounting_api, tenant_id, account_id, start_date, end_date
+            )
+            
+            # 1.3. Get specific bank transaction details with line items
             detailed_transactions = self._get_detailed_bank_transactions(
                 accounting_api, tenant_id, all_transactions
             )
             
-            # 1.3. Calculate spent and received based on account codes
-            categorized_data = self._categorize_bank_transactions(detailed_transactions, connection_db_id)
+            # 1.4. Get specific payment details with line items
+            detailed_payments = self._get_detailed_payments(
+                accounting_api, tenant_id, all_payments, connection_db_id, start_date, end_date
+            )
             
-            return categorized_data
+            # 1.5. Merge and categorize all transactions and payments
+            all_line_items = detailed_transactions + detailed_payments
+            
+            # Simple categorization: just spend vs received (no subcategories yet)
+            simple_categorized = self._simple_categorize_spend_received(all_line_items)
+            
+            # Write debug data to JSON
+            with open("simple_categorized_debug.json", "w") as f:
+                import json
+                json.dump(simple_categorized, f, indent=2, default=str)
+            
+            return simple_categorized
             
         except Exception as e:
-            print(f"[CASHFLOW] Error getting bank transaction data: {str(e)}")
-            return self._get_empty_categories()
+            print(f"[CASHFLOW] Error getting transaction data: {str(e)}")
+            # return self._get_empty_categories()
+            return {}
 
     def _get_all_bank_transactions_for_account(
         self, 
@@ -553,6 +577,69 @@ class XeroCashFlowService:
             print(f"[CASHFLOW] Error fetching bank transactions: {str(e)}")
             return []
 
+    def _get_all_payments_for_account(
+        self, 
+        accounting_api: AccountingApi, 
+        tenant_id: str, 
+        account_id: str,
+        start_date: str, 
+        end_date: str
+    ) -> List[Any]:
+        """
+        Get all payments for a specific account and date range.
+        
+        Args:
+            accounting_api: Xero accounting API client
+            tenant_id: Xero tenant ID
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date in YYYY-MM-DD format
+            
+        Returns:
+            List of payments
+        """
+        # Convert dates to Xero format
+        start_date_xero = f"DateTime({start_date.replace('-', ',')})"
+        end_date_xero = f"DateTime({end_date.replace('-', ',')})"
+        
+        # Build where clause and include specific bank account filter
+        where_clause = (
+            f'Date >= {start_date_xero} && Date <= {end_date_xero} && '
+            f'Status == "AUTHORISED" && Account.AccountID == Guid("{account_id}")'
+        )
+        
+        try:
+            all_payments: List[Any] = []
+            page = 1
+            page_size = 1000
+            
+            while True:
+                response = accounting_api.get_payments(
+                    tenant_id,
+                    empty,              # if_modified_since
+                    where_clause,       # where
+                    "Date ASC",        # order
+                    page,               # page
+                    empty,              # unitdp
+                    page_size           # page_size
+                )
+                
+                batch = getattr(response, 'payments', None) or []
+                if not batch:
+                    break
+                
+                all_payments.extend(batch)
+                
+                if len(batch) < page_size:
+                    break
+                
+                page += 1
+            
+            return all_payments
+            
+        except Exception as e:
+            print(f"[CASHFLOW] Error fetching payments: {str(e)}")
+            return []
+
     def _get_detailed_bank_transactions(
         self, 
         accounting_api: AccountingApi, 
@@ -588,6 +675,7 @@ class XeroCashFlowService:
                     if transaction_detail.line_items:
                         for i, line_item in enumerate(transaction_detail.line_items):
                             line_items.append({
+                                "type": transaction.type,
                                 "accountCode": line_item.account_code,
                                 "unitAmount": float(line_item.unit_amount or 0.0),
                                 "quantity": float(line_item.quantity or 1.0),
@@ -602,6 +690,7 @@ class XeroCashFlowService:
                         account_code = getattr(transaction_detail.bank_account, 'code', '') if hasattr(transaction_detail, 'bank_account') else ''
                         if account_code:
                             line_items.append({
+                                "type": transaction.type,
                                 "accountCode": account_code,
                                 "unitAmount": float(transaction_detail.total or 0.0),
                                 "quantity": 1.0,
@@ -623,239 +712,252 @@ class XeroCashFlowService:
         
         return detailed_transactions
 
-    def _get_category_mappings(self, connection_db_id: int) -> Dict[str, Any]:
+    def _get_detailed_payments(self, accounting_api: AccountingApi, tenant_id: str, payments: List, connection_db_id: str, report_start_date: str = None, report_end_date: str = None) -> List[Dict]:
         """
-        Get category mappings from database for categorizing transactions.
-        
-        Returns:
-            Dictionary with spent and received category mappings
-        """
-        try:
-            # Use managed session and filter by connection
-            with self.session_manager.get_session() as db:
-                accounts = db.query(
-                    XeroAccount.account_code,
-                    XeroAccount.connection_id,
-                    XeroCategory.name,
-                    XeroCategory.type,
-                    XeroCategory.is_income
-                ).join(
-                    XeroCategory, XeroAccount.category_id == XeroCategory.id
-                ).filter(
-                    XeroAccount.connection_id == connection_db_id
-                ).all()
-            
-            # Initialize mappings
-            category_mappings = {
-                "spent": {
-                    "gst_payment": [],
-                    "interest_payment": [],
-                    "loan_payment": [],
-                    "payroll": [],
-                    "rates": [],
-                    "others": [],
-                    "gst_refund": []
-                },
-                "received": {
-                    "income": [],
-                    "rental_income": []
-                }
-            }
-
-            
-            # Categorize accounts based on category type and is_income flag
-            for account_code, connection_id, category_name, category_type, is_income in accounts:
-                if is_income:
-                    # Income categories
-                    if category_type == "Rent":
-                        category_mappings["received"]["rental_income"].append(account_code)
-                    else:
-                        category_mappings["received"]["income"].append(account_code)
-                else:
-                    # Expense categories
-                    if category_name == "Interest Expense":
-                        category_mappings["spent"]["interest_payment"].append(account_code)
-                    elif category_name == "Staff Costs":
-                        category_mappings["spent"]["payroll"].append(account_code)
-                    elif category_name == "Rates":
-                        category_mappings["spent"]["rates"].append(account_code)
-                    elif category_type == "GST":
-                        category_mappings["spent"]["gst_payment"].append(account_code)
-                    elif category_type == "Loan":
-                        category_mappings["spent"]["loan_payment"].append(account_code)
-                    elif category_type == "Refund":
-                        category_mappings["spent"]["gst_refund"].append(account_code)
-                    else:
-                        # Others: Get all with is_income false excluding Interest Expense, Staff Costs, Rates
-                        if category_name not in ["Interest Expense", "Staff Costs", "Rates"]:
-                            category_mappings["spent"]["others"].append(account_code)
-            return category_mappings
-            
-        except Exception as e:
-            print(f"Error getting category mappings: {e}")
-            # Return empty mappings if there's an error
-            return {
-                "spent": {
-                    "gst_payment": [],
-                    "interest_payment": [],
-                    "loan_payment": [],
-                    "payroll": [],
-                    "rates": [],
-                    "others": [],
-                    "gst_refund": []
-                },
-                "received": {
-                    "income": [],
-                    "rental_income": []
-                }
-            }
-
-    def _categorize_bank_transactions(self, transactions: List[Dict[str, Any]], connection_db_id: int) -> Dict[str, Any]:
-        """
-        Categorize bank transactions into spent and received categories.
+        Get detailed line items for payments
         
         Args:
-            transactions: List of detailed transactions with line items
+            accounting_api: Xero Accounting API client
+            tenant_id: Xero tenant ID
+            payments: List of payments to process
+            connection_db_id: Database connection ID
+            report_start_date: Report start date (YYYY-MM-DD) for filtering
+            report_end_date: Report end date (YYYY-MM-DD) for filtering
+        """
+        detailed_payments = []
+        
+        # Convert report dates to datetime for comparison
+        from datetime import datetime
+        start_date = None
+        end_date = None
+        if report_start_date and report_end_date:
+            start_date = datetime.strptime(report_start_date, "%Y-%m-%d")
+            end_date = datetime.strptime(report_end_date, "%Y-%m-%d")
+        
+        for payment in payments:
+            try:
+                payment_detail = accounting_api.get_payment(
+                    tenant_id,
+                    payment.payment_id
+                )
+                
+                # Extract line items from the invoice, not from payment directly
+                line_items = []
+                
+                # Handle the case where payment_detail might be a list or have a different structure
+                if hasattr(payment_detail, 'payments') and payment_detail.payments:
+                    # If it's a list of payments, take the first one
+                    payment = payment_detail.payments[0]
+                else:
+                    payment = payment_detail
+                
+                # Check if payment has an invoice with line items
+                if hasattr(payment, 'invoice') and payment.invoice:
+                    # Filter out payments for old invoices that are outside the report period
+                    if start_date and end_date:
+                        invoice_date_str = getattr(payment.invoice, 'date_string', None)
+                        if invoice_date_str:
+                            try:
+                                # Parse invoice date (format: "2025-07-01T00:00:00")
+                                invoice_date = datetime.strptime(invoice_date_str.split('T')[0], "%Y-%m-%d")
+                                
+                                # Skip payments for invoices that are outside the report period
+                                if invoice_date < start_date or invoice_date > end_date:
+                                    continue
+                                    
+                            except (ValueError, AttributeError) as e:
+                                print(f"[CASHFLOW] Warning: Could not parse invoice date for payment {payment.payment_id}: {e}")
+                                # Continue processing if we can't parse the date
+                    
+                    if hasattr(payment.invoice, 'line_items') and payment.invoice.line_items:
+                        for line_item in payment.invoice.line_items:
+                            line_items.append({
+                                "accountCode": line_item.account_code if hasattr(line_item, 'account_code') else payment.account.code if hasattr(payment, 'account') and payment.account else "Unknown",
+                                "unitAmount": float(line_item.unit_amount) if hasattr(line_item, 'unit_amount') and line_item.unit_amount else 0.0,
+                                "quantity": float(line_item.quantity) if hasattr(line_item, 'quantity') and line_item.quantity else 1.0,
+                                "lineAmount": float(line_item.line_amount) if hasattr(line_item, 'line_amount') and line_item.line_amount else 0.0,
+                                "description": line_item.description if hasattr(line_item, 'description') else "Payment",
+                                "taxAmount": float(line_item.tax_amount) if hasattr(line_item, 'tax_amount') and line_item.tax_amount else 0.0
+                            })
+                    else:
+                        # Fallback: create a default line item using payment details
+                        account_code = payment.account.code if hasattr(payment, 'account') and payment.account else "Unknown"
+                        line_items.append({
+                            "accountCode": account_code,
+                            "unitAmount": float(payment.amount) if hasattr(payment, 'amount') and payment.amount else 0.0,
+                            "quantity": 1.0,
+                            "lineAmount": float(payment.amount) if hasattr(payment, 'amount') and payment.amount else 0.0,
+                            "description": "Payment",
+                            "taxAmount": 0.0
+                        })
+                
+                if line_items:
+                    detailed_payments.append({
+                        "transaction_id": payment.payment_id,
+                        "type": payment.payment_type,
+                        "total": payment.amount if hasattr(payment, 'amount') else 0.0,
+                        "lineItems": line_items
+                    })
+                    
+            except Exception as e:
+                print(f"[CASHFLOW] Error getting detailed payment {payment.payment_id}: {e}")
+                continue
+                
+        return detailed_payments
+
+    def _simple_categorize_spend_received(self, all_line_items: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Simple categorization: just separate into spend vs received based on payment types.
+        No subcategories yet - just the basic separation.
+        """
+        # Initialize simple structure
+        simple_categorized = {
+            "spent": {
+                "total": 0.0,
+                "data": []
+            },
+            "received": {
+                "total": 0.0,
+                "data": []
+            }
+        }
+        
+        # Payment types that indicate money going OUT (spent)
+        spend_payment_types = {
+            "SPEND",                    # Bank spending
+            "ACCPAYPAYMENT",           # Paying bills/suppliers
+            "APCREDITPAYMENT",         # Paying supplier credits
+            "APPREPAYMENTPAYMENT",     # Advance payments to suppliers
+            "APOVERPAYMENTPAYMENT",    # Overpayments to suppliers
+            "ARCREDITPAYMENT"          # Issuing credits/refunds to customers
+        }
+        
+        # Payment types that indicate money coming IN (received)
+        received_payment_types = {
+            "RECEIVE",                 # Bank receiving
+            "ACCRECPAYMENT",          # Receiving customer payments
+            "AROVERPAYMENTPAYMENT",   # Receiving customer overpayments
+            "ARPREPAYMENTPAYMENT"     # Receiving advance payments from customers
+        }
+        
+        for item in all_line_items:
+            item_type = item.get("type", "")
+            item_total = float(item.get("total", 0.0))
+            
+            # Categorize based on payment type
+            if item_type in spend_payment_types:
+                # This is money going OUT (spent)
+                simple_categorized["spent"]["total"] += item_total
+                
+                # Clean line items and handle proportional distribution if needed
+                clean_line_items = self._process_line_items_with_distribution(item.get("lineItems", []), item_total)
+                
+                simple_categorized["spent"]["data"].append({
+                    "transaction_id": item["transaction_id"],
+                    "type": item_type,
+                    "total": item_total,
+                    "lineItems": clean_line_items
+                })
+                
+            elif item_type in received_payment_types:
+                # This is money coming IN (received)
+                simple_categorized["received"]["total"] += item_total
+                
+                # Clean line items and handle proportional distribution if needed
+                clean_line_items = self._process_line_items_with_distribution(item.get("lineItems", []), item_total)
+                
+                simple_categorized["received"]["data"].append({
+                    "transaction_id": item["transaction_id"],
+                    "type": item_type,
+                    "total": item_total,
+                    "lineItems": clean_line_items
+                })
+                
+            else:
+                # Unknown payment type - need to investigate
+                # For now, add to spent as default
+                simple_categorized["spent"]["total"] += item_total
+                
+                # Clean line items and handle proportional distribution if needed
+                clean_line_items = self._process_line_items_with_distribution(item.get("lineItems", []), item_total)
+                
+                simple_categorized["spent"]["data"].append({
+                    "transaction_id": item["transaction_id"],
+                    "type": item_type,
+                    "total": item_total,
+                    "lineItems": clean_line_items,
+                    "note": "Unknown payment type - defaulted to spent"
+                })
+        
+        return simple_categorized
+
+    def _process_line_items_with_distribution(self, line_items: List[Dict[str, Any]], payment_total: float) -> List[Dict[str, Any]]:
+        """
+        Process line items and apply proportional distribution if there are multiple items with different account codes.
+        
+        Args:
+            line_items: List of line items from the transaction
+            payment_total: Total payment amount for this transaction
             
         Returns:
-            Dictionary with spent and received categories
+            Processed line items with distributed amounts
         """
-        # Get category mappings from database for this connection
-        category_mappings = self._get_category_mappings(connection_db_id)
+        if not line_items or len(line_items) <= 1:
+            # Single line item or no line items - no distribution needed
+            clean_line_items = []
+            for line_item in line_items:
+                clean_line_items.append({
+                    "accountCode": line_item.get("accountCode"),
+                    "lineAmount": line_item.get("lineAmount"),
+                    "description": line_item.get("description")
+                })
+            return clean_line_items
         
-        # Initialize categories
-        categorized_data = {
-            "spent": {
-                "gst_payment": {"total": 0.0, "data": []},
-                "interest_payment": {"total": 0.0, "data": []},
-                "loan_payment": {"total": 0.0, "data": []},
-                "payroll": {"total": 0.0, "data": []},
-                "rates": {"total": 0.0, "data": []},
-                "others": {"total": 0.0, "data": []},
-                "gst_refund": {"total": 0.0, "data": []}
-            },
-            "received": {
-                "income": {"total": 0.0, "data": []},
-                "rental_income": {"total": 0.0, "data": []}
-            }
-        }
+        # Check if we have multiple line items with different account codes
+        account_codes = set()
+        for line_item in line_items:
+            account_code = line_item.get("accountCode")
+            if account_code:
+                account_codes.add(account_code)
         
-        for transaction in transactions:
-            transaction_type = transaction.get("type", "")
-            transaction_total = transaction.get("total", 0.0)
+        if len(account_codes) <= 1:
+            # All line items have the same account code - no distribution needed
+            clean_line_items = []
+            for line_item in line_items:
+                clean_line_items.append({
+                    "accountCode": line_item.get("accountCode"),
+                    "lineAmount": line_item.get("lineAmount"),
+                    "description": line_item.get("description")
+                })
+            return clean_line_items
+        
+        # Multiple line items with different account codes - apply proportional distribution
+        total_invoice_amount = sum(float(line_item.get("lineAmount", 0.0)) for line_item in line_items)
+        
+        if total_invoice_amount <= 0:
+            # Fallback to original amounts if total is invalid
+            clean_line_items = []
+            for line_item in line_items:
+                clean_line_items.append({
+                    "accountCode": line_item.get("accountCode"),
+                    "lineAmount": line_item.get("lineAmount"),
+                    "description": line_item.get("description")
+                })
+            return clean_line_items
+        
+        # Calculate proportional distribution
+        clean_line_items = []
+        for line_item in line_items:
+            original_amount = float(line_item.get("lineAmount", 0.0))
+            percentage = (original_amount / total_invoice_amount) * 100
+            distributed_amount = (original_amount / total_invoice_amount) * payment_total
             
-            # Process line items for categorization
-            for line_item in transaction.get("lineItems", []):
-                account_code = line_item.get("accountCode", "")
-                line_amount = line_item.get("lineAmount", 0.0)
-                
-                # Categorize based on account code
-                categorized = False
-                
-                # Check received categories first
-                if account_code in category_mappings["received"]["income"]:
-                    categorized_data["received"]["income"]["total"] += line_amount
-                    categorized_data["received"]["income"]["data"].append({
-                        "type": "bankTransaction",
-                        "transaction_id": transaction["transaction_id"],
-                        "accountCode": account_code,
-                        "unitPrice": line_item["unitAmount"],
-                        "quantity": line_item["quantity"],
-                        "lineAmount": line_amount,
-                        "description": line_item["description"],
-                        "taxAmount": line_item["taxAmount"]
-                    })
-                    categorized = True
-                    
-                elif account_code in category_mappings["received"]["rental_income"]:
-                    categorized_data["received"]["rental_income"]["total"] += line_amount
-                    categorized_data["received"]["rental_income"]["data"].append({
-                        "type": "bankTransaction",
-                        "transaction_id": transaction["transaction_id"],
-                        "accountCode": account_code,
-                        "unitPrice": line_item["unitAmount"],
-                        "quantity": line_item["quantity"],
-                        "lineAmount": line_amount,
-                        "description": line_item["description"],
-                        "taxAmount": line_item["taxAmount"]
-                    })
-                    categorized = True
-                
-                # Check spent categories
-                elif account_code in category_mappings["spent"]["interest_payment"]:
-                    categorized_data["spent"]["interest_payment"]["total"] += line_amount
-                    categorized_data["spent"]["interest_payment"]["data"].append({
-                        "type": "bankTransaction",
-                        "transaction_id": transaction["transaction_id"],
-                        "accountCode": account_code,
-                        "unitPrice": line_item["unitAmount"],
-                        "quantity": line_item["quantity"],
-                        "lineAmount": line_amount,
-                        "description": line_item["description"],
-                        "taxAmount": line_item["taxAmount"]
-                    })
-                    categorized = True
-                    
-                elif account_code in category_mappings["spent"]["payroll"]:
-                    categorized_data["spent"]["payroll"]["total"] += line_amount
-                    categorized_data["spent"]["payroll"]["data"].append({
-                        "type": "bankTransaction",
-                        "transaction_id": transaction["transaction_id"],
-                        "accountCode": account_code,
-                        "unitPrice": line_item["unitAmount"],
-                        "quantity": line_item["quantity"],
-                        "lineAmount": line_amount,
-                        "description": line_item["description"],
-                        "taxAmount": line_item["taxAmount"]
-                    })
-                    categorized = True
-                    
-                elif account_code in category_mappings["spent"]["rates"]:
-                    categorized_data["spent"]["rates"]["total"] += line_amount
-                    categorized_data["spent"]["rates"]["data"].append({
-                        "type": "bankTransaction",
-                        "transaction_id": transaction["transaction_id"],
-                        "accountCode": account_code,
-                        "unitPrice": line_item["unitAmount"],
-                        "quantity": line_item["quantity"],
-                        "lineAmount": line_amount,
-                        "description": line_item["description"],
-                        "taxAmount": line_item["taxAmount"]
-                    })
-                    categorized = True
-                
-                # If not categorized, add to "others" for spent items
-                if not categorized:
-                    categorized_data["spent"]["others"]["total"] += line_amount
-                    categorized_data["spent"]["others"]["data"].append({
-                        "type": "bankTransaction",
-                        "transaction_id": transaction["transaction_id"],
-                        "accountCode": account_code,
-                        "unitPrice": line_item["unitAmount"],
-                        "quantity": line_item["quantity"],
-                        "lineAmount": line_amount,
-                        "description": line_item["description"],
-                        "taxAmount": line_item["taxAmount"]
-                    })
+            clean_line_items.append({
+                "accountCode": line_item.get("accountCode"),
+                "lineAmount": line_item.get("lineAmount"),
+                "description": line_item.get("description"),
+                "distributedAmount": round(distributed_amount, 2)
+            })
         
-        return categorized_data
+        return clean_line_items
 
-    def _get_empty_categories(self) -> Dict[str, Any]:
-        """
-        Return empty category structure.
-        """
-        return {
-            "spent": {
-                "gst_payment": {"total": 0.0, "data": []},
-                "interest_payment": {"total": 0.0, "data": []},
-                "loan_payment": {"total": 0.0, "data": []},
-                "payroll": {"total": 0.0, "data": []},
-                "rates": {"total": 0.0, "data": []},
-                "others": {"total": 0.0, "data": []},
-                "gst_refund": {"total": 0.0, "data": []}
-            },
-            "received": {
-                "income": {"total": 0.0, "data": []},
-                "rental_income": {"total": 0.0, "data": []}
-            }
-        }
