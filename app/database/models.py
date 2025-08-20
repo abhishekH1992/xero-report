@@ -145,7 +145,7 @@ class XeroCategory(Base):
     accounts = relationship("XeroAccount", back_populates="category")
     
     def __repr__(self):
-        return f"<XeroCategory(id={self.id}, name='{self.name}', type='{self.type}', is_income={self.is_income})>"
+        return f"<XeroCategory(id={self.id}, name='{self.name}', type='{self.type}')>"
 
 
 class XeroAccount(Base):
