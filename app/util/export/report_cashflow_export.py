@@ -709,6 +709,10 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                     "Payment amount"
                 ]
                 
+                # Add Validation column only for first period
+                if len(date_ranges) > 0:
+                    additional_headers.append("Validation")
+                
                 # Write additional headers
                 for col_idx, header in enumerate(additional_headers, received_end_idx + 1):
                     cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
@@ -899,6 +903,43 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                     col_idx += 1
                     ws[f"{get_column_letter(col_idx)}{current_row}"] = ""  # Payment amount
                     ws[f"{get_column_letter(col_idx)}{current_row}"].border = border
+                    col_idx += 1
+                    
+                    # Add Validation column only for first period
+                    if len(date_ranges) > 0:
+                        # Calculate validation: closing_balance - opening_balance == received - spent
+                        first_period_key = f"{date_ranges[0][0]}_{date_ranges[0][1]}"
+                        first_period_data = account_data.get('periods', {}).get(first_period_key, {})
+                        
+                        opening_balance = first_period_data.get('opening_balance', 0)
+                        closing_balance = first_period_data.get('closing_balance', 0)
+                        
+                        # Calculate total received and spent for first period
+                        total_received = sum(
+                            received_data.get(key, {}).get('total', 0) 
+                            for key in received_data.keys()
+                        )
+                        total_spent = sum(
+                            spent_data.get(key, {}).get('total', 0) 
+                            for key in spent_data.keys()
+                        )
+                        
+                        # Validation: closing_balance - opening_balance == received - spent
+                        balance_change = closing_balance - opening_balance
+                        cash_flow = total_received - total_spent
+                        validation_amount = cash_flow - balance_change
+                        
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = validation_amount
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        
+                        # Highlight with red background and soft red text if validation fails
+                        if abs(validation_amount) > 0.01:  # Allow for small rounding differences
+                            cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                            cell.font = Font(color="FF0000")  # Red text
+                        
+                        col_idx += 1
                     
                     current_row += 1
                 
@@ -1010,6 +1051,48 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                         ws[f"{get_column_letter(col_idx)}{current_row}"].border = border
                         col_idx += 1
                     
+                    # Add validation column total for first period
+                    if len(date_ranges) > 0:
+                        # Calculate total validation amount across all accounts in this bank
+                        total_validation = 0.0
+                        for bank_account in bank_accounts:
+                            account_data = bank_account['account_data']
+                            first_period_key = f"{date_ranges[0][0]}_{date_ranges[0][1]}"
+                            first_period_data = account_data.get('periods', {}).get(first_period_key, {})
+                            
+                            opening_balance = first_period_data.get('opening_balance', 0)
+                            closing_balance = first_period_data.get('closing_balance', 0)
+                            
+                            spent_data = account_data.get('spent', {})
+                            received_data = account_data.get('received', {})
+                            
+                            total_received = sum(
+                                received_data.get(key, {}).get('total', 0) 
+                                for key in received_data.keys()
+                            )
+                            total_spent = sum(
+                                spent_data.get(key, {}).get('total', 0) 
+                                for key in spent_data.keys()
+                            )
+                            
+                            balance_change = closing_balance - opening_balance
+                            cash_flow = total_received - total_spent
+                            validation_amount = cash_flow - balance_change
+                            total_validation += validation_amount
+                        
+                        cell = ws[f"{get_column_letter(col_idx)}{current_row}"]
+                        cell.value = total_validation
+                        cell.font = Font(bold=True)
+                        cell.number_format = '"$"#,##0.00'
+                        cell.border = border
+                        
+                        # Highlight with red background and soft red text if validation fails
+                        if abs(total_validation) > 0.01:  # Allow for small rounding differences
+                            cell.fill = PatternFill("solid", fgColor="FFE6E6")  # Soft red background
+                            cell.font = Font(bold=True, color="FF0000")  # Red text
+                        
+                        col_idx += 1
+                    
                     current_row += 1
                 
                 # Add spacing between banks
@@ -1028,8 +1111,22 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
         for i in range(4, 4 + balance_cols):
             ws.column_dimensions[get_column_letter(i)].width = 20
         
+        # Set width for spent columns (GST Payment, Interest Payment, Loan Payment, Payroll, Rates, Others, GST Refund)
+        spent_cols_count = 7  # Number of spent columns
+        for i in range(4 + balance_cols, 4 + balance_cols + spent_cols_count):
+            ws.column_dimensions[get_column_letter(i)].width = 20
+        
+        # Set width for received columns (Income, Rental Income)
+        received_cols_count = 2  # Number of received columns
+        for i in range(4 + balance_cols + spent_cols_count, 4 + balance_cols + spent_cols_count + received_cols_count):
+            ws.column_dimensions[get_column_letter(i)].width = 20
+        
         # Set width for additional columns
-        for i in range(4 + balance_cols, 4 + balance_cols + 12):
+        additional_cols = 3  # Minimum Balance, Next due date, Payment amount
+        if len(date_ranges) > 0:
+            additional_cols += 1  # Add validation column for first period
+        
+        for i in range(4 + balance_cols + spent_cols_count + received_cols_count, 4 + balance_cols + spent_cols_count + received_cols_count + additional_cols):
             ws.column_dimensions[get_column_letter(i)].width = 20
         
     finally:

@@ -207,12 +207,13 @@ async def list_connections(
                     "id": conn.id,
                     "tenant_id": conn.tenant_id,
                     "tenant_name": conn.tenant_name,
+                    "ownership": conn.ownership,
                     "business_type": conn.business_type,
                     "app_id": conn.app_id,
-                    "expires_at": conn.expires_at.isoformat(),
-                    "is_active": conn.is_active,
-                    "created_at": conn.created_at.isoformat(),
-                    "updated_at": conn.updated_at.isoformat()
+                    # "expires_at": conn.expires_at.isoformat(),
+                    # "is_active": conn.is_active,
+                    # "created_at": conn.created_at.isoformat(),
+                    # "updated_at": conn.updated_at.isoformat()
                 }
                 for conn in connections
             ],

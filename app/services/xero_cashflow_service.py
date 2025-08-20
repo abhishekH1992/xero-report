@@ -67,7 +67,12 @@ class XeroCashFlowService:
                         print(f"[CASHFLOW] Connection with ID {cid} was not found in the database")
                         continue
         else:
-            connections = self.xero_auth_service.get_all_connections()
+            # Get all connections and filter out specific business types
+            all_connections = self.xero_auth_service.get_all_connections()
+            connections = [
+                conn for conn in all_connections 
+                if conn.business_type not in ["Project", "Stonewood Developments"]
+            ]
         
         if not connections:
             raise ValueError("No active Xero connections found")
@@ -1023,21 +1028,21 @@ class XeroCashFlowService:
                 }
                 
                 # Categorize based on category name
-                if "interest" in category_name:
+                if category_name == "Interest Expense":
                     subcategorized["spent"]["interest_payment"]["data"].append(line_transaction)
                     subcategorized["spent"]["interest_payment"]["total"] += amount_for_category
-                elif "staff" in category_name or "payroll" in category_name:
+                elif category_name == "Staff Costs":
                     subcategorized["spent"]["payroll"]["data"].append(line_transaction)
                     subcategorized["spent"]["payroll"]["total"] += amount_for_category
-                elif "rates" in category_name:
+                elif category_name == "Rates":
                     subcategorized["spent"]["rates"]["data"].append(line_transaction)
                     subcategorized["spent"]["rates"]["total"] += amount_for_category
+                elif category_name in ["Bank Term Loan", "Non Bank Term Loan"]:
+                    subcategorized["spent"]["loan_payment"]["data"].append(line_transaction)
+                    subcategorized["spent"]["loan_payment"]["total"] += amount_for_category
                 elif "gst" in category_name and "refund" not in category_name:
                     subcategorized["spent"]["gst_payment"]["data"].append(line_transaction)
                     subcategorized["spent"]["gst_payment"]["total"] += amount_for_category
-                elif "loan" in category_name:
-                    subcategorized["spent"]["loan_payment"]["data"].append(line_transaction)
-                    subcategorized["spent"]["loan_payment"]["total"] += amount_for_category
                 elif "gst" in category_name and "refund" in category_name:
                     subcategorized["spent"]["gst_refund"]["data"].append(line_transaction)
                     subcategorized["spent"]["gst_refund"]["total"] += amount_for_category
