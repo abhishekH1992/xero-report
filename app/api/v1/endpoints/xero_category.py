@@ -29,8 +29,6 @@ async def upload_categories_accounts(
     - Type: category/account
     - Name: Category name or account description
     - AccountType: Category type
-    - BusinessType: Business classification
-    - IsIncome: Whether category represents income (true/false, yes/no, 1/0)
     """
     
     # Validate file type
@@ -55,7 +53,25 @@ async def upload_categories_accounts(
                 detail=f"Missing required columns. Expected: {required_columns}"
             )
         
+        # Check if DataFrame is empty
+        if df.empty:
+            raise HTTPException(
+                status_code=400,
+                detail="Uploaded file is empty or contains no data"
+            )
+        
+        # Check if DataFrame has any rows
+        if len(df) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Uploaded file contains no rows to process"
+            )
+        
         # Process the data
+        print(f"Processing file with {len(df)} rows and columns: {list(df.columns)}")
+        print(f"First few rows:")
+        print(df.head())
+        
         result = process_categories_accounts(df, db)
         
         return {
@@ -64,7 +80,12 @@ async def upload_categories_accounts(
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
+        import traceback
+        error_detail = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+        print(f"Error processing file: {error_detail}")
+        print(f"Exception type: {type(e).__name__}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error processing file: {error_detail}")
 
 def process_categories_accounts(df: pd.DataFrame, db: Session) -> dict:
     """Process the dataframe to create/update categories and accounts."""
@@ -108,17 +129,6 @@ def process_categories_accounts(df: pd.DataFrame, db: Session) -> dict:
                     
                 category_name = str(row['Name']).strip()
                 category_type = str(row.get('AccountType', '')).strip() if 'AccountType' in row and pd.isna(row['AccountType']) == False else None
-                business_type = str(row.get('BusinessType', '')).strip() if 'BusinessType' in row and pd.isna(row['BusinessType']) == False else None
-                
-                # Process IsIncome column - handle various formats (true/false, yes/no, 1/0)
-                is_income = None
-                if 'IsIncome' in row and pd.isna(row['IsIncome']) == False:
-                    income_value = str(row['IsIncome']).strip().lower()
-                    if income_value in ['true', 'yes', '1', 't', 'y']:
-                        is_income = True
-                    elif income_value in ['false', 'no', '0', 'f', 'n']:
-                        is_income = False
-                    # If it's neither true nor false, keep as None (nullable)
                 
                 # Create or update category
                 category = db.query(XeroCategory).filter(
@@ -128,16 +138,12 @@ def process_categories_accounts(df: pd.DataFrame, db: Session) -> dict:
                 if category:
                     # Update existing category
                     category.type = category_type
-                    category.business_type = business_type
-                    category.is_income = is_income
                     categories_updated += 1
                 else:
                     # Create new category
                     category = XeroCategory(
                         name=category_name,
-                        type=category_type,
-                        business_type=business_type,
-                        is_income=is_income
+                        type=category_type
                     )
                     db.add(category)
                     categories_created += 1
@@ -279,7 +285,12 @@ def process_categories_accounts(df: pd.DataFrame, db: Session) -> dict:
         db.commit()
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        import traceback
+        error_detail = str(e) if str(e) else f"Unknown database error: {type(e).__name__}"
+        print(f"Database commit error: {error_detail}")
+        print(f"Exception type: {type(e).__name__}")
+        print(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Database error: {error_detail}")
     
     return {
         "categories_created": categories_created,

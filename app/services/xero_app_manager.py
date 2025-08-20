@@ -11,6 +11,7 @@ class XeroAppManager:
         self.app_configs = {
             1: {"client_id": settings.xero_app1_client_id, "client_secret": settings.xero_app1_client_secret},
             2: {"client_id": settings.xero_app2_client_id, "client_secret": settings.xero_app2_client_secret},
+            3: {"client_id": settings.xero_app3_client_id, "client_secret": settings.xero_app3_client_secret},
         }
         
         # Validate app configurations during initialization
