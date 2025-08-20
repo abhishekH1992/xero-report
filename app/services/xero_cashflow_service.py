@@ -824,20 +824,27 @@ class XeroCashFlowService:
         
         # Payment types that indicate money going OUT (spent)
         spend_payment_types = {
-            "SPEND",                    # Bank spending
-            "ACCPAYPAYMENT",           # Paying bills/suppliers
-            "APCREDITPAYMENT",         # Paying supplier credits
-            "APPREPAYMENTPAYMENT",     # Advance payments to suppliers
-            "APOVERPAYMENTPAYMENT",    # Overpayments to suppliers
-            "ARCREDITPAYMENT"          # Issuing credits/refunds to customers
+            "SPEND",
+            "ACCPAYPAYMENT",
+            "APCREDITPAYMENT",
+            "APPREPAYMENTPAYMENT",
+            "APOVERPAYMENTPAYMENT",
+            "ARCREDITPAYMENT",
+            "SPEND-OVERPAYMENT",
+            "SPEND-PREPAYMENT",
+            "SPEND-TRANSFER",
         }
         
         # Payment types that indicate money coming IN (received)
         received_payment_types = {
-            "RECEIVE",                 # Bank receiving
-            "ACCRECPAYMENT",          # Receiving customer payments
-            "AROVERPAYMENTPAYMENT",   # Receiving customer overpayments
-            "ARPREPAYMENTPAYMENT"     # Receiving advance payments from customers
+            "RECEIVE",
+            "ACCRECPAYMENT",
+            "AROVERPAYMENTPAYMENT",
+            "ARPREPAYMENTPAYMENT",
+            "RECEIVE-TRANSFER",
+            "RECEIVE-OVERPAYMENT",
+            "RECEIVE-PREPAYMENT",
+
         }
         
         for item in all_line_items:
@@ -929,8 +936,7 @@ class XeroCashFlowService:
                 XeroAccount.account_code,
                 XeroAccount.connection_id,
                 XeroCategory.name,
-                XeroCategory.type,
-                XeroCategory.is_income
+                XeroCategory.type
             ).join(
                 XeroCategory, XeroAccount.category_id == XeroCategory.id
             ).filter(
@@ -942,8 +948,7 @@ class XeroCashFlowService:
             for account in accounts:
                 account_mappings[account.account_code] = {
                     "name": account.name,
-                    "type": account.type,
-                    "is_income": account.is_income
+                    "type": account.type
                 }
             
             return account_mappings
@@ -992,8 +997,8 @@ class XeroCashFlowService:
                     continue
                 
                 category_info = account_mappings.get(account_code, {})
-                category_name = category_info.get("name", "").lower()
-                category_type = category_info.get("type", "").lower()
+                category_name = (category_info.get("name") or "").lower()
+                category_type = (category_info.get("type") or "").lower()
                 
                 # Use distributedAmount if available, otherwise use transaction total
                 # For spent transactions, we need to calculate the amount for this line item
@@ -1049,7 +1054,7 @@ class XeroCashFlowService:
                     continue
                 
                 category_info = account_mappings.get(account_code, {})
-                category_type = category_info.get("type", "").lower()
+                category_type = (category_info.get("type") or "").lower()
                 
                 # Use distributedAmount if available, otherwise use transaction total
                 if "distributedAmount" in line_item:

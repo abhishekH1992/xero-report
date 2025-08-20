@@ -139,8 +139,7 @@ class XeroCategory(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, index=True)
     type = Column(String(100), nullable=True)
-    business_type = Column(String(255), nullable=True)
-    is_income = Column(Boolean, default=False, nullable=False)  # Indicates if category represents income
+
     
     # Relationship to accounts
     accounts = relationship("XeroAccount", back_populates="category")
