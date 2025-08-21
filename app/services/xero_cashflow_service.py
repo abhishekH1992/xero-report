@@ -54,57 +54,66 @@ class XeroCashFlowService:
         # Calculate date ranges
         date_ranges = calculate_date_ranges(report_date, period, period_of)
 
-        connections = [];
-        
-        # Get connections
-        if connection_ids:
-                connection_ids = [cid.strip() for cid in connection_ids.split(',')]
-                for cid in connection_ids:
-                    connection = self.xero_auth_service.get_connection(cid)
-                    if connection:
-                        connections.append(connection)
-                    else:
-                        print(f"[CASHFLOW] Connection with ID {cid} was not found in the database")
-                        continue
-        else:
-            # Get all connections and filter out specific business types
-            all_connections = self.xero_auth_service.get_all_connections()
-            connections = [
-                conn for conn in all_connections 
-                if conn.business_type not in ["Project", "Stonewood Developments"]
-            ]
-        
-        if not connections:
-            raise ValueError("No active Xero connections found")
-        
-        cashflow_data = {}
-        errors = []
-        
-        # Process each connection
-        for connection in connections:
+        # Use session manager like aged receivables
+        with self.session_manager.get_session() as session:
             try:
-                connection_data = await self._process_connection(
-                    connection, date_ranges
-                )
-                # Include connection_id in the data structure
-                connection_data['connection_id'] = connection.tenant_id
-                cashflow_data[connection.tenant_name] = connection_data
+                connections = []
+                
+                # Get connections
+                if connection_ids:
+                    connection_ids = [cid.strip() for cid in connection_ids.split(',')]
+                    for cid in connection_ids:
+                        connection = self.xero_auth_service.get_connection(cid)
+                        if connection:
+                            connections.append(connection)
+                        else:
+                            print(f"[CASHFLOW] Connection with ID {cid} was not found in the database")
+                            continue
+                else:
+                    # Get all connections and filter for app 1 only
+                    all_connections = self.xero_auth_service.get_all_connections()
+                    connections = [
+                        conn for conn in all_connections 
+                        if conn.business_type not in ["Project", "Stonewood Developments"]
+                    ]
+                
+                if not connections:
+                    raise ValueError("No active Xero connections found")
+                
+                cashflow_data = {}
+                errors = []
+                
+                # Process each connection
+                for connection in connections:
+                    try:
+                        connection_data = await self._process_connection(
+                            connection, date_ranges
+                        )
+                        # Include connection_id in the data structure
+                        connection_data['connection_id'] = connection.tenant_id
+                        cashflow_data[connection.tenant_name] = connection_data
+                    except Exception as e:
+                        error_msg = f"Error processing connection {connection.tenant_name}: {str(e)}"
+                        print(f"[CASHFLOW] {error_msg}")
+                        errors.append({
+                            "connection_name": connection.tenant_name,
+                            "connection_id": connection.id,
+                            "error": str(e),
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        # Continue with other connections even if one fails
+                        continue
+                
+                return {
+                    "data": cashflow_data,
+                    "errors": errors
+                }
+                
             except Exception as e:
-                error_msg = f"Error processing connection {connection.tenant_name}: {str(e)}"
-                print(f"[CASHFLOW] {error_msg}")
-                errors.append({
-                    "connection_name": connection.tenant_name,
-                    "connection_id": connection.id,
-                    "error": str(e),
-                    "timestamp": datetime.now().isoformat()
-                })
-                # Continue with other connections even if one fails
-                continue
-            
-        return {
-            "data": cashflow_data,
-            "errors": errors
-        }
+                # Session will automatically rollback on exception
+                print(f"[CASHFLOW] Error in main method: {str(e)}")
+                raise
+            # Session automatically closes here
     
     async def _process_connection(
         self, 
@@ -933,31 +942,31 @@ class XeroCashFlowService:
             Dictionary mapping account codes to their category information
         """
         try:
-            from app.database.database import get_db
             from app.database.models import XeroAccount, XeroCategory
             
-            db = next(get_db())
-            accounts = db.query(
-                XeroAccount.account_code,
-                XeroAccount.connection_id,
-                XeroCategory.name,
-                XeroCategory.type
-            ).join(
-                XeroCategory, XeroAccount.category_id == XeroCategory.id
-            ).filter(
-                XeroAccount.connection_id == connection_id
-            ).all()
-            
-            # Create mapping: account_code -> category info
-            account_mappings = {}
-            for account in accounts:
-                account_mappings[account.account_code] = {
-                    "name": account.name,
-                    "type": account.type
-                }
-            
-            return account_mappings
-            
+            # Use session manager for database operations
+            with self.session_manager.get_session() as session:
+                accounts = session.query(
+                    XeroAccount.account_code,
+                    XeroAccount.connection_id,
+                    XeroCategory.name,
+                    XeroCategory.type
+                ).join(
+                    XeroCategory, XeroAccount.category_id == XeroCategory.id
+                ).filter(
+                    XeroAccount.connection_id == connection_id
+                ).all()
+                
+                # Create mapping: account_code -> category info
+                account_mappings = {}
+                for account in accounts:
+                    account_mappings[account.account_code] = {
+                        "name": account.name,
+                        "type": account.type
+                    }
+                
+                return account_mappings
+                
         except Exception as e:
             print(f"[CASHFLOW] Error getting account mappings: {e}")
             return {}
