@@ -962,7 +962,7 @@ class XeroCashFlowService:
                 for account in accounts:
                     account_mappings[account.account_code] = {
                         "name": account.name,
-                        "type": account.type
+                        "type": account.type,
                     }
                 
                 return account_mappings
@@ -1034,7 +1034,9 @@ class XeroCashFlowService:
                 line_transaction = {
                     "transaction_id": transaction["transaction_id"],
                     "type": transaction["type"],
-                    "lineItems": [line_item]
+                    "lineItems": [line_item],
+                    "category_name": category_info.get("name"),
+                    "category_type": category_info.get("type")
                 }
 
                 # Categorize based on category name
@@ -1086,7 +1088,9 @@ class XeroCashFlowService:
                 line_transaction = {
                     "transaction_id": transaction["transaction_id"],
                     "type": transaction["type"],
-                    "lineItems": [line_item]
+                    "lineItems": [line_item],
+                    "category_name": category_info.get("name"),
+                    "category_type": category_info.get("type")
                 }
                 
                 # Check if it's rental income
@@ -1114,6 +1118,7 @@ class XeroCashFlowService:
         Returns:
             Processed line items with distributed amounts
         """
+        print(f"[CASHFLOW DEV DEBUG] line_items={line_items}")
         if not line_items or len(line_items) <= 1:
             # Single line item or no line items - no distribution needed
             clean_line_items = []
