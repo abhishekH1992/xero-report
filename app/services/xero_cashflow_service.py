@@ -9,8 +9,9 @@ from app.util.report_helper import (
 )
 from app.services.xero_auth import XeroAuthService
 from app.database.models import XeroConnection
-from app.database.models import XeroCategory, XeroAccount
 from app.util.db_session_manager import DatabaseSessionManager
+from app.util.export.report_cashflow_export import export_cashflow_to_excel, generate_cashflow_json_response
+from fastapi import HTTPException
 
 
 class XeroCashFlowService:
@@ -1178,3 +1179,59 @@ class XeroCashFlowService:
         
         return clean_line_items
 
+    async def generate_cashflow_report(self, report_date: str, period: int, period_of: str, connection_ids: str) -> Dict[str, Any]:
+        """
+        Generate cashflow report
+        """
+
+        if report_date:
+            try:
+                parsed_date = datetime.strptime(report_date, "%Y-%m-%d").date()
+                report_date_obj = parsed_date
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid report_date format. Use YYYY-MM-DD.")
+        else:
+            report_date_obj = datetime.utcnow().date()
+        
+        report_date_str = report_date_obj.strftime("%Y-%m-%d")
+        
+        try:
+            # Get cashflow data
+            result = await self.get_cashflow_data(
+                report_date=report_date_str,
+                period=period,
+                period_of=period_of,
+                connection_ids=connection_ids
+            )
+            
+            # Extract data and errors from result
+            cashflow_data = result.get("data", {})
+            errors = result.get("errors", [])
+            
+            # Calculate date ranges for export
+            date_ranges = calculate_date_ranges(report_date_str, period, period_of)
+            
+            # Export to Excel - use absolute path to ensure both app and worker use same location
+            excel_file_path = export_cashflow_to_excel(
+                cashflow_data=cashflow_data,
+                date_ranges=date_ranges,
+                filename="cashflow_report",
+                output_dir=os.getenv('OUTPUT_DIR'),
+                report_date=report_date_str
+            )
+
+            # Generate JSON response
+            json_response = generate_cashflow_json_response(
+                cashflow_data=cashflow_data,
+                date_ranges=date_ranges,
+                excel_file_path=excel_file_path,
+                errors=errors
+            )
+
+        except Exception as e:
+            print(f"[CASHFLOW DEV DEBUG] Error generating cashflow report: {e}")
+            return {
+                "error": str(e)
+            }
+            
+        return json_response

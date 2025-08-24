@@ -6,16 +6,11 @@ from datetime import datetime
 import pandas as pd
 import os
 
-from xero_python.accounting.api.accounting_api import empty
-
 from app.database.database import get_db
 from app.services.xero_aged_receivables_service import XeroAgedReceivablesService
 from app.services.xero_auth import XeroAuthService
 from app.services.xero_cashflow_service import XeroCashFlowService
 from app.services.db_queue_service import DatabaseQueueService
-from app.util.report_export import export_report_to_excel, generate_system_comments
-from app.util.report_helper import calculate_aging_bucket, generate_bucket_names, process_financial_item, calculate_date_ranges
-from app.util.export.report_cashflow_export import export_cashflow_to_excel, generate_cashflow_json_response
 from app.util.auth import api_key_auth
 
 router = APIRouter(
@@ -97,61 +92,48 @@ async def get_cashflow_report(
     period: int = Query(2, description="Number of periods to go back"),
     period_of: str = Query("Week", description="Type of period (Week, Month, Year)"),
     cashflow_service: XeroCashFlowService = Depends(get_cashflow_service),
-    connection_ids: str = Query(None, description="Connection ID(s) - comma-separated for multiple connections")
+    connection_ids: str = Query(None, description="Connection ID(s) - comma-separated for multiple connections"),
+    is_local: bool = Query(False, description="Generate report immediately (true) or queue (false)"),
+    db: Session = Depends(get_db)
 ):
     """
-    CashFlow report: fetch bank statement data from all connections or a specific connection,
-    filter for ASB and ANZ banks, and export to Excel with multiple sheets.
+    Generate cashflow report with option to queue for background processing
     """
-    # Parse report_date or use today
-    if report_date:
-        try:
-            parsed_date = datetime.strptime(report_date, "%Y-%m-%d").date()
-            report_date_obj = parsed_date
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid report_date format. Use YYYY-MM-DD.")
-    else:
-        report_date_obj = datetime.utcnow().date()
     
-    report_date_str = report_date_obj.strftime("%Y-%m-%d")
-    
-    try:
-        # Get cashflow data
-        result = await cashflow_service.get_cashflow_data(
-            report_date=report_date_str,
+    if is_local:
+        # Generate report immediately using the service
+        # Make sure to await the async method
+        result = await cashflow_service.generate_cashflow_report(
+            report_date=report_date,
             period=period,
             period_of=period_of,
             connection_ids=connection_ids
         )
+        return result
+    else:
+        # Queue the job for background processing using database
+        queue_service = DatabaseQueueService(db)
         
-        # Extract data and errors from result
-        cashflow_data = result.get("data", {})
-        errors = result.get("errors", [])
+        job_data = {
+            "report_date": report_date,
+            "period": period,
+            "period_of": period_of,
+            "connection_ids": connection_ids
+        }
         
-        # Calculate date ranges for export
-        date_ranges = calculate_date_ranges(report_date_str, period, period_of)
+        job_id = queue_service.enqueue_job("cashflow_report", job_data)
         
-        # Export to Excel - use absolute path to ensure both app and worker use same location
-        excel_file_path = export_cashflow_to_excel(
-            cashflow_data=cashflow_data,
-            date_ranges=date_ranges,
-            filename="cashflow_report",
-            output_dir=os.getenv('OUTPUT_DIR'),
-            report_date=report_date_str
-        )
-
-        # Generate JSON response
-        json_response = generate_cashflow_json_response(
-            cashflow_data=cashflow_data,
-            date_ranges=date_ranges,
-            excel_file_path=excel_file_path,
-            errors=errors
-        )
-        
-        return json_response
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating CashFlow report: {str(e)}")
+        return {
+            "format": "table",
+            "data": [
+                {
+                    "status": "queued",
+                    "job_id": job_id,
+                }
+            ],
+            "columns": ["status", "job_id"],
+            "shape": [1, 2],
+        }
 
 @router.get("/excel/{filename}")
 async def serve_excel_file(filename: str, download: bool = Query(False, description="Force download instead of inline display")):
