@@ -325,8 +325,9 @@ def extract_account_details(account_description: str) -> tuple:
     print(f"DEBUG: company_part='{company_part}' -> company_name='{company_name}'")
     print(f"DEBUG: account_part='{account_part}'")
     
-    # Extract account code (first number after colon)
-    account_code_match = re.search(r'(\d+)', account_part)
+    # Extract account code (first number with optional decimal after colon)
+    # Updated regex to capture decimal numbers like 3335.2
+    account_code_match = re.search(r'(\d+\.?\d*)', account_part)
     if not account_code_match:
         print(f"DEBUG: No account code found in '{account_part}'")
         return company_name, None, None  # Company found but no account code

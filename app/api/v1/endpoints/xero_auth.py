@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from app.services.xero_auth import XeroAuthService
 from app.services.xero_app_manager import XeroAppManager
 from app.util.auth import api_key_auth
+from app.database.database import get_db
 # from app.models.xero_auth import XeroTokenResponse, XeroConnection
 
 router = APIRouter(
@@ -403,6 +404,71 @@ async def cleanup_expired_states(
     """Clean up expired auth states from database"""
     deleted_count = xero_service.cleanup_expired_states()
     return {"message": f"Cleaned up {deleted_count} expired states"} 
+
+
+@router.get("/accounts/{connection_id}")
+async def get_accounts_by_connection(
+    connection_id: int = Path(..., description="Connection ID to get accounts for"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get account details (account code, name, id) by connection ID
+    
+    Returns:
+    - List of accounts with their details
+    - Account count
+    - Connection information
+    """
+    try:
+        # Import models here to avoid circular imports
+        from app.database.models import XeroAccount, XeroCategory, XeroConnection
+        
+        # Get connection details
+        connection = db.query(XeroConnection).filter(
+            XeroConnection.id == connection_id
+        ).first()
+        
+        if not connection:
+            raise HTTPException(status_code=404, detail="Connection not found")
+        
+        # Get accounts with category information
+        accounts = db.query(
+            XeroAccount.id,
+            XeroAccount.account_code,
+            XeroAccount.name,
+            XeroCategory.name.label('category_name')
+        ).join(
+            XeroCategory, XeroAccount.category_id == XeroCategory.id
+        ).filter(
+            XeroAccount.connection_id == connection_id
+        ).all()
+        
+        # Format the response
+        account_list = []
+        for account in accounts:
+            account_list.append({
+                "id": account.id,
+                "account_code": account.account_code,
+                "name": account.name,
+                "category_name": account.category_name
+            })
+        
+        return {
+            "connection": {
+                "id": connection.id,
+                "tenant_id": connection.tenant_id,
+                "tenant_name": connection.tenant_name,
+                "app_id": connection.app_id
+            },
+            "accounts": account_list,
+            "count": len(account_list),
+            "total_records": len(account_list)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get accounts: {str(e)}")
 
 
 @router.get("/auth/scope/{tenant_id}")

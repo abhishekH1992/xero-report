@@ -675,7 +675,7 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                     cell.border = border
 
                 # Merge and write Spent header (immediately after Balance)
-                spent_cols = ["GST Payment", "Interest Payment", "Loan Payment", "Payroll", "Rates", "Others", "GST Refund"]
+                spent_cols = ["GST Payment", "Interest Payment", "Loan Payment", "Payroll", "Rates", "Others"]
                 spent_start_idx = 4 + balance_cols
                 spent_end_idx = spent_start_idx + len(spent_cols) - 1
                 spent_start_col = get_column_letter(spent_start_idx)
@@ -689,7 +689,7 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                 cell.border = border
 
                 # Merge and write Received header (immediately after Balance)
-                received_cols = ["Income", "Rental Income"]
+                received_cols = ["GST Refund", "Income", "Rental Income"]
                 received_start_idx = spent_end_idx + 1
                 received_end_idx   = received_start_idx + len(received_cols) - 1
                 received_start_col = get_column_letter(received_start_idx)

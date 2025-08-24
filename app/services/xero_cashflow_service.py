@@ -997,6 +997,7 @@ class XeroCashFlowService:
                 "gst_refund": {"total": 0.0, "data": []}
             },
             "received": {
+                "gst_refund": {"total": 0.0, "data": []},
                 "income": {"total": 0.0, "data": []},
                 "rental_income": {"total": 0.0, "data": []}
             }
@@ -1035,26 +1036,23 @@ class XeroCashFlowService:
                     "type": transaction["type"],
                     "lineItems": [line_item]
                 }
-                
+
                 # Categorize based on category name
-                if category_name == "Interest Expense":
+                if category_type == "interestexpense":
                     subcategorized["spent"]["interest_payment"]["data"].append(line_transaction)
                     subcategorized["spent"]["interest_payment"]["total"] += amount_for_category
-                elif category_name == "Staff Costs":
+                elif category_type == "payroll":
                     subcategorized["spent"]["payroll"]["data"].append(line_transaction)
                     subcategorized["spent"]["payroll"]["total"] += amount_for_category
-                elif category_name == "Rates":
+                elif category_type == "rates":
                     subcategorized["spent"]["rates"]["data"].append(line_transaction)
                     subcategorized["spent"]["rates"]["total"] += amount_for_category
-                elif category_name in ["Bank Term Loan", "Non Bank Term Loan"]:
+                elif category_type == 'loan':
                     subcategorized["spent"]["loan_payment"]["data"].append(line_transaction)
                     subcategorized["spent"]["loan_payment"]["total"] += amount_for_category
-                elif "gst" in category_name and "refund" not in category_name:
+                elif category_type == "gst":
                     subcategorized["spent"]["gst_payment"]["data"].append(line_transaction)
                     subcategorized["spent"]["gst_payment"]["total"] += amount_for_category
-                elif "gst" in category_name and "refund" in category_name:
-                    subcategorized["spent"]["gst_refund"]["data"].append(line_transaction)
-                    subcategorized["spent"]["gst_refund"]["total"] += amount_for_category
                 else:
                     subcategorized["spent"]["others"]["data"].append(line_transaction)
                     subcategorized["spent"]["others"]["total"] += amount_for_category
@@ -1092,7 +1090,10 @@ class XeroCashFlowService:
                 }
                 
                 # Check if it's rental income
-                if category_type == "rent":
+                if category_type == "gst":
+                    subcategorized["received"]["gst_refund"]["data"].append(line_transaction)
+                    subcategorized["received"]["gst_refund"]["total"] += amount_for_category
+                elif category_type == "rent":
                     subcategorized["received"]["rental_income"]["data"].append(line_transaction)
                     subcategorized["received"]["rental_income"]["total"] += amount_for_category
                 else:
@@ -1120,7 +1121,7 @@ class XeroCashFlowService:
                 clean_line_items.append({
                     "accountCode": line_item.get("accountCode"),
                     "lineAmount": line_item.get("lineAmount"),
-                    "description": line_item.get("description")
+                    "description": line_item.get("description"),
                 })
             return clean_line_items
         
@@ -1138,7 +1139,7 @@ class XeroCashFlowService:
                 clean_line_items.append({
                     "accountCode": line_item.get("accountCode"),
                     "lineAmount": line_item.get("lineAmount"),
-                    "description": line_item.get("description")
+                    "description": line_item.get("description"),
                 })
             return clean_line_items
         
@@ -1152,7 +1153,7 @@ class XeroCashFlowService:
                 clean_line_items.append({
                     "accountCode": line_item.get("accountCode"),
                     "lineAmount": line_item.get("lineAmount"),
-                    "description": line_item.get("description")
+                    "description": line_item.get("description"),
                 })
             return clean_line_items
         
