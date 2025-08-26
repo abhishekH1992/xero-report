@@ -13,6 +13,8 @@ from app.util.db_session_manager import DatabaseSessionManager
 from app.util.export.report_cashflow_export import export_cashflow_to_excel, generate_cashflow_json_response
 from fastapi import HTTPException
 
+import os
+
 
 class XeroCashFlowService:
     """Service for generating CashFlow reports from Xero data."""
@@ -85,7 +87,7 @@ class XeroCashFlowService:
                 errors = []
                 
                 # Process each connection
-                for connection in connections:
+                for key, connection in enumerate(connections):
                     try:
                         connection_data = await self._process_connection(
                             connection, date_ranges
@@ -93,6 +95,9 @@ class XeroCashFlowService:
                         # Include connection_id in the data structure
                         connection_data['connection_id'] = connection.tenant_id
                         cashflow_data[connection.tenant_name] = connection_data
+                        print(f"[CASHFLOW DEV DEBUG] ------------------------------")
+                        print(f"[CASHFLOW DEV DEBUG] remaining connections: {len(connections) - (key + 1)}")
+                        print(f"[CASHFLOW DEV DEBUG] ------------------------------")
                     except Exception as e:
                         error_msg = f"Error processing connection {connection.tenant_name}: {str(e)}"
                         print(f"[CASHFLOW] {error_msg}")
@@ -140,6 +145,10 @@ class XeroCashFlowService:
         connection_data = {
             "accounts": []
         }
+
+        print(f"[CASHFLOW DEV DEBUG] ------------------------------")
+        print(f"[CASHFLOW DEV DEBUG] Processing Bank Summary", connection.tenant_name)
+        print(f"[CASHFLOW DEV DEBUG] ------------------------------")
         
         # Get bank summary data for each date range
         for key, (start_date, end_date) in enumerate(date_ranges):
@@ -147,6 +156,7 @@ class XeroCashFlowService:
                 bank_summary_data = self._get_bank_summary_data(
                     accounting_api, str(connection.tenant_id), start_date, end_date
                 )
+                print(f"[CASHFLOW DEV DEBUG] bank_summary_data={bank_summary_data}")
                 # Process each account in the summary
                 for account_id, account_data in bank_summary_data.items():
                     # Check if this account is ASB or ANZ by getting account details
@@ -172,8 +182,8 @@ class XeroCashFlowService:
                 continue
         
         # Calculate final totals and summaries
-        # final_totals = self._calculate_final_totals(connection_data)
-        final_totals = {}
+        final_totals = self._calculate_final_totals(connection_data)
+        # final_totals = {}
         connection_data["final_totals"] = final_totals
         
         return connection_data
@@ -227,7 +237,6 @@ class XeroCashFlowService:
                         if hasattr(row, 'row_type') and row.row_type.value == "Section" and hasattr(row, 'rows') and row.rows:
                             for sub_row in row.rows:
                                 if hasattr(sub_row, 'row_type') and sub_row.row_type.value == "Row" and hasattr(sub_row, 'cells') and sub_row.cells:
-                                    # Extract account data from sub_row
                                     account_name = ""
                                     account_id = ""
                                     opening_balance = 0
@@ -248,7 +257,19 @@ class XeroCashFlowService:
                                         opening_balance = float(sub_row.cells[1].value or 0)
                                         cash_received = float(sub_row.cells[2].value or 0)
                                         cash_spent = float(sub_row.cells[3].value or 0)
-                                        closing_balance = float(sub_row.cells[4].value or 0)
+                                        closing_balance = float(sub_row.cells[-1].value or 0)
+
+                                        if closing_balance == 0:
+                                            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
+                                            print(f"[CASHFLOW DEV DEBUG] sub_row={sub_row}")
+                                            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
+                                        else:
+                                            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
+                                            print(f"[CASHFLOW DEV DEBUG] closing_balance={closing_balance}")
+                                            print(f"[CASHFLOW DEV DEBUG] opening_balance={opening_balance}")
+                                            print(f"[CASHFLOW DEV DEBUG] cash_received={cash_received}")
+                                            print(f"[CASHFLOW DEV DEBUG] cash_spent={cash_spent}")
+                                            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
                                         
                                         # Get account details to check if it's ASB or ANZ
                                         if account_id:
@@ -276,6 +297,9 @@ class XeroCashFlowService:
                         
                         # Handle direct Row rows (fallback)
                         elif hasattr(row, 'row_type') and row.row_type.value == "Row" and hasattr(row, 'cells') and row.cells:
+                            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
+                            print(f"[CASHFLOW DEV DEBUG] row else={row}")
+                            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
                             # Extract account data from row
                             account_name = ""
                             account_id = ""
@@ -495,11 +519,19 @@ class XeroCashFlowService:
             all_transactions = self._get_all_bank_transactions_for_account(
                 accounting_api, tenant_id, account_id, start_date, end_date
             )
+
+            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
+            print(f"[CASHFLOW DEV DEBUG] all_transactions={len(all_transactions)}")
+            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
             
             # 1.2. Get all payments for the account
             all_payments = self._get_all_payments_for_account(
                 accounting_api, tenant_id, account_id, start_date, end_date
             )
+
+            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
+            print(f"[CASHFLOW DEV DEBUG] all_payments={len(all_payments)}")
+            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
             
             # 1.3. Get specific bank transaction details with line items
             detailed_transactions = self._get_detailed_bank_transactions(
@@ -513,9 +545,13 @@ class XeroCashFlowService:
             
             # 1.5. Merge and categorize all transactions and payments
             all_line_items = detailed_transactions + detailed_payments
+
+            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
+            print(f"[CASHFLOW DEV DEBUG] Cashflow categories: {len(all_line_items)}")
+            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
             
             # Get both simple and subcategorized data
-            categorized_data = self.get_categorized_cashflow(all_line_items, connection_db_id)
+            categorized_data = self.get_categorized_cashflow(all_line_items, connection_db_id) if len(all_line_items) > 0 else {}
             
             # Write debug data to JSON
             # with open("simple_categorized_debug.json", "w") as f:
@@ -618,8 +654,7 @@ class XeroCashFlowService:
         
         # Build where clause and include specific bank account filter
         where_clause = (
-            f'Date >= {start_date_xero} && Date <= {end_date_xero} && '
-            f'Status == "AUTHORISED" && Account.AccountID == Guid("{account_id}")'
+            f'Date >= {start_date_xero} && Date <= {end_date_xero} && Status == "AUTHORISED" && Account.AccountID == Guid("{account_id}")'
         )
         
         try:
@@ -629,13 +664,12 @@ class XeroCashFlowService:
             
             while True:
                 response = accounting_api.get_payments(
-                    tenant_id,
-                    empty,              # if_modified_since
-                    where_clause,       # where
-                    "Date ASC",        # order
-                    page,               # page
-                    empty,              # unitdp
-                    page_size           # page_size
+                    xero_tenant_id = tenant_id,
+                    if_modified_since = empty,              # if_modified_since
+                    where = where_clause,       # where
+                    order = empty,        # order
+                    page = page,               # page
+                    page_size = page_size           # page_size
                 )
                 
                 batch = getattr(response, 'payments', None) or []
@@ -644,8 +678,19 @@ class XeroCashFlowService:
                 
                 all_payments.extend(batch)
                 
-                if len(batch) < page_size:
-                    break
+                # Check if we've reached the end based on pagination info
+                pagination = getattr(response, 'pagination', None)
+                if pagination:
+                    current_page = getattr(pagination, 'page', 1)
+                    total_pages = getattr(pagination, 'page_count', 1)
+                    
+                    # Break only when we've processed all pages
+                    if current_page >= total_pages:
+                        break
+                else:
+                    # Fallback: break if batch is smaller than page size
+                    if len(batch) < page_size:
+                        break
                 
                 page += 1
             
@@ -1119,7 +1164,6 @@ class XeroCashFlowService:
         Returns:
             Processed line items with distributed amounts
         """
-        print(f"[CASHFLOW DEV DEBUG] line_items={line_items}")
         if not line_items or len(line_items) <= 1:
             # Single line item or no line items - no distribution needed
             clean_line_items = []
@@ -1235,3 +1279,106 @@ class XeroCashFlowService:
             }
             
         return json_response
+
+    def _calculate_final_totals(self, connection_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Calculate final totals across all accounts and periods.
+        
+        Args:
+            connection_data: Dictionary containing connection data with accounts and periods
+            
+        Returns:
+            Dictionary containing calculated totals
+        """
+        try:
+            totals = {
+                "total_accounts": 0,
+                "total_periods": 0,
+                "period_totals": {},
+                "account_totals": {},
+                "overall_totals": {
+                    "total_opening_balance": 0,
+                    "total_cash_received": 0,
+                    "total_cash_spent": 0,
+                    "total_closing_balance": 0
+                }
+            }
+            
+            accounts = connection_data.get('accounts', [])
+            totals["total_accounts"] = len(accounts)
+            
+            if not accounts:
+                return totals
+            
+            # Get all unique period keys from the first account
+            first_account = accounts[0]
+            period_keys = list(first_account.get('periods', {}).keys())
+            totals["total_periods"] = len(period_keys)
+            
+            # Initialize period totals
+            for period_key in period_keys:
+                totals["period_totals"][period_key] = {
+                    "opening_balance": 0,
+                    "cash_received": 0,
+                    "cash_spent": 0,
+                    "closing_balance": 0
+                }
+            
+            # Calculate totals for each account and period
+            for account in accounts:
+                account_id = account.get('account_id')
+                account_name = account.get('account_name')
+                bank_name = account.get('bank_name')
+                
+                # Initialize account totals
+                totals["account_totals"][account_id] = {
+                    "account_name": account_name,
+                    "bank_name": bank_name,
+                    "total_opening_balance": 0,
+                    "total_cash_received": 0,
+                    "total_cash_spent": 0,
+                    "total_closing_balance": 0
+                }
+                
+                periods = account.get('periods', {})
+                for period_key, period_data in periods.items():
+                    # Period totals
+                    opening_balance = float(period_data.get('opening_balance', 0))
+                    cash_received = float(period_data.get('cash_received', 0))
+                    cash_spent = float(period_data.get('cash_spent', 0))
+                    closing_balance = float(period_data.get('closing_balance', 0))
+                    
+                    totals["period_totals"][period_key]["opening_balance"] += opening_balance
+                    totals["period_totals"][period_key]["cash_received"] += cash_received
+                    totals["period_totals"][period_key]["cash_spent"] += cash_spent
+                    totals["period_totals"][period_key]["closing_balance"] += closing_balance
+                    
+                    # Account totals
+                    totals["account_totals"][account_id]["total_opening_balance"] += opening_balance
+                    totals["account_totals"][account_id]["total_cash_received"] += cash_received
+                    totals["account_totals"][account_id]["total_cash_spent"] += cash_spent
+                    totals["account_totals"][account_id]["total_closing_balance"] += closing_balance
+                    
+                    # Overall totals
+                    totals["overall_totals"]["total_opening_balance"] += opening_balance
+                    totals["overall_totals"]["total_cash_received"] += cash_received
+                    totals["overall_totals"]["total_cash_spent"] += cash_spent
+                    totals["overall_totals"]["total_closing_balance"] += closing_balance
+            
+            return totals
+            
+        except Exception as e:
+            print(f"[CASHFLOW] Error calculating final totals: {str(e)}")
+            return {
+                "error": f"Failed to calculate totals: {str(e)}",
+                "total_accounts": 0,
+                "total_periods": 0,
+                "period_totals": {},
+                "account_totals": {},
+                "overall_totals": {
+                    "total_opening_balance": 0,
+                    "total_cash_received": 0,
+                    "total_cash_spent": 0,
+                    "total_closing_balance": 0
+                }
+            }

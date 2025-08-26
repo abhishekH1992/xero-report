@@ -1201,5 +1201,8 @@ def generate_cashflow_json_response(
             connection_info["banks"].append(bank_info)
         
         response["connections"].append(connection_info)
+
+        if 'final_totals' in connection_data:
+            response["final_totals"] = connection_data['final_totals']
     
     return response
