@@ -12,7 +12,7 @@ from app.database.models import XeroConnection
 from app.util.db_session_manager import DatabaseSessionManager
 from app.util.export.report_cashflow_export import export_cashflow_to_excel, generate_cashflow_json_response
 from fastapi import HTTPException
-
+import time
 import os
 
 
@@ -95,9 +95,6 @@ class XeroCashFlowService:
                         # Include connection_id in the data structure
                         connection_data['connection_id'] = connection.tenant_id
                         cashflow_data[connection.tenant_name] = connection_data
-                        print(f"[CASHFLOW DEV DEBUG] ------------------------------")
-                        print(f"[CASHFLOW DEV DEBUG] remaining connections: {len(connections) - (key + 1)}")
-                        print(f"[CASHFLOW DEV DEBUG] ------------------------------")
                     except Exception as e:
                         error_msg = f"Error processing connection {connection.tenant_name}: {str(e)}"
                         print(f"[CASHFLOW] {error_msg}")
@@ -147,12 +144,11 @@ class XeroCashFlowService:
         }
 
         print(f"[CASHFLOW DEV DEBUG] ------------------------------")
-        print(f"[CASHFLOW DEV DEBUG] Processing Bank Summary", connection.tenant_name)
-        print(f"[CASHFLOW DEV DEBUG] ------------------------------")
         
         # Get bank summary data for each date range
         for key, (start_date, end_date) in enumerate(date_ranges):
             try:
+                print(f"[CASHFLOW DEV DEBUG] Processing Bank Summary", connection.tenant_name)
                 bank_summary_data = self._get_bank_summary_data(
                     accounting_api, str(connection.tenant_id), start_date, end_date
                 )
@@ -182,8 +178,8 @@ class XeroCashFlowService:
                 continue
         
         # Calculate final totals and summaries
-        final_totals = self._calculate_final_totals(connection_data)
-        # final_totals = {}
+        # final_totals = self._calculate_final_totals(connection_data)
+        final_totals = {}
         connection_data["final_totals"] = final_totals
         
         return connection_data
@@ -258,18 +254,6 @@ class XeroCashFlowService:
                                         cash_received = float(sub_row.cells[2].value or 0)
                                         cash_spent = float(sub_row.cells[3].value or 0)
                                         closing_balance = float(sub_row.cells[-1].value or 0)
-
-                                        if closing_balance == 0:
-                                            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
-                                            print(f"[CASHFLOW DEV DEBUG] sub_row={sub_row}")
-                                            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
-                                        else:
-                                            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
-                                            print(f"[CASHFLOW DEV DEBUG] closing_balance={closing_balance}")
-                                            print(f"[CASHFLOW DEV DEBUG] opening_balance={opening_balance}")
-                                            print(f"[CASHFLOW DEV DEBUG] cash_received={cash_received}")
-                                            print(f"[CASHFLOW DEV DEBUG] cash_spent={cash_spent}")
-                                            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
                                         
                                         # Get account details to check if it's ASB or ANZ
                                         if account_id:
@@ -297,9 +281,6 @@ class XeroCashFlowService:
                         
                         # Handle direct Row rows (fallback)
                         elif hasattr(row, 'row_type') and row.row_type.value == "Row" and hasattr(row, 'cells') and row.cells:
-                            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
-                            print(f"[CASHFLOW DEV DEBUG] row else={row}")
-                            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
                             # Extract account data from row
                             account_name = ""
                             account_id = ""
@@ -520,18 +501,14 @@ class XeroCashFlowService:
                 accounting_api, tenant_id, account_id, start_date, end_date
             )
 
-            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
             print(f"[CASHFLOW DEV DEBUG] all_transactions={len(all_transactions)}")
-            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
             
             # 1.2. Get all payments for the account
             all_payments = self._get_all_payments_for_account(
                 accounting_api, tenant_id, account_id, start_date, end_date
             )
 
-            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
             print(f"[CASHFLOW DEV DEBUG] all_payments={len(all_payments)}")
-            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
             
             # 1.3. Get specific bank transaction details with line items
             detailed_transactions = self._get_detailed_bank_transactions(
@@ -546,9 +523,7 @@ class XeroCashFlowService:
             # 1.5. Merge and categorize all transactions and payments
             all_line_items = detailed_transactions + detailed_payments
 
-            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
             print(f"[CASHFLOW DEV DEBUG] Cashflow categories: {len(all_line_items)}")
-            print(f"[CASHFLOW DEV DEBUG] ------------------------------")
             
             # Get both simple and subcategorized data
             categorized_data = self.get_categorized_cashflow(all_line_items, connection_db_id) if len(all_line_items) > 0 else {}
@@ -735,13 +710,8 @@ class XeroCashFlowService:
                     if transaction_detail.line_items:
                         for i, line_item in enumerate(transaction_detail.line_items):
                             line_items.append({
-                                "type": transaction.type,
-                                "accountCode": line_item.account_code,
-                                "unitAmount": float(line_item.unit_amount or 0.0),
-                                "quantity": float(line_item.quantity or 1.0),
-                                "lineAmount": float(line_item.line_amount or 0.0),
-                                "description": line_item.description or "",
-                                "taxAmount": float(line_item.tax_amount or 0.0)
+                                "accountCode": line_item.account_code if hasattr(line_item, 'account_code') and line_item.account_code else "UNKNOWN",
+                                "lineAmount": float(line_item.line_amount) if hasattr(line_item, 'line_amount') and line_item.line_amount else 0.0,
                             })
                     else:
                         # If no line items, create a default line item using the transaction's account code
@@ -750,13 +720,8 @@ class XeroCashFlowService:
                         account_code = getattr(transaction_detail.bank_account, 'code', '') if hasattr(transaction_detail, 'bank_account') else ''
                         if account_code:
                             line_items.append({
-                                "type": transaction.type,
                                 "accountCode": account_code,
-                                "unitAmount": float(transaction_detail.total or 0.0),
-                                "quantity": 1.0,
                                 "lineAmount": float(transaction_detail.total or 0.0),
-                                "description": f"Bank transaction {transaction_detail.type}",
-                                "taxAmount": 0.0
                             })
                     
                     detailed_transactions.append({
@@ -774,15 +739,7 @@ class XeroCashFlowService:
 
     def _get_detailed_payments(self, accounting_api: AccountingApi, tenant_id: str, payments: List, connection_db_id: str, report_start_date: str = None, report_end_date: str = None) -> List[Dict]:
         """
-        Get detailed line items for payments
-        
-        Args:
-            accounting_api: Xero Accounting API client
-            tenant_id: Xero tenant ID
-            payments: List of payments to process
-            connection_db_id: Database connection ID
-            report_start_date: Report start date (YYYY-MM-DD) for filtering
-            report_end_date: Report end date (YYYY-MM-DD) for filtering
+        Get detailed line items for payments - BATCHED VERSION
         """
         detailed_payments = []
         
@@ -794,74 +751,55 @@ class XeroCashFlowService:
             start_date = datetime.strptime(report_start_date, "%Y-%m-%d")
             end_date = datetime.strptime(report_end_date, "%Y-%m-%d")
         
-        for payment in payments:
-            try:
-                payment_detail = accounting_api.get_payment(
-                    tenant_id,
-                    payment.payment_id
-                )
-                
-                # Extract line items from the invoice, not from payment directly
-                line_items = []
-                
-                # Handle the case where payment_detail might be a list or have a different structure
-                if hasattr(payment_detail, 'payments') and payment_detail.payments:
-                    # If it's a list of payments, take the first one
-                    payment = payment_detail.payments[0]
-                else:
-                    payment = payment_detail
-                
-                # Check if payment has an invoice with line items
-                if hasattr(payment, 'invoice') and payment.invoice:
-                    # Filter out payments for old invoices that are outside the report period
-                    if start_date and end_date:
-                        invoice_date_str = getattr(payment.invoice, 'date_string', None)
-                        if invoice_date_str:
-                            try:
-                                # Parse invoice date (format: "2025-07-01T00:00:00")
-                                invoice_date = datetime.strptime(invoice_date_str.split('T')[0], "%Y-%m-%d")
-                                
-                                # Skip payments for invoices that are outside the report period
-                                if invoice_date < start_date or invoice_date > end_date:
-                                    continue
-                                    
-                            except (ValueError, AttributeError) as e:
-                                print(f"[CASHFLOW] Warning: Could not parse invoice date for payment {payment.payment_id}: {e}")
-                                # Continue processing if we can't parse the date
+        # OPTIMIZATION: Process payments in smaller batches to avoid overwhelming the API
+        batch_size = 50  # Smaller batch size to avoid rate limiting
+        
+        for i in range(0, len(payments), batch_size):
+            batch_payments = payments[i:i + batch_size]
+            batch_start_time = time.time()
+            
+            # Process batch with small delays to respect rate limits
+            for payment_data in batch_payments:
+                try:
+                    payment_detail = accounting_api.get_payment(
+                        tenant_id,
+                        payment_data.payment_id
+                    )
                     
-                    if hasattr(payment.invoice, 'line_items') and payment.invoice.line_items:
+                    # Your existing processing logic...
+                    line_items = []
+                    
+                    # Handle the case where payment_detail might be a list or have a different structure
+                    if hasattr(payment_detail, 'payments') and payment_detail.payments:
+                        payment = payment_detail.payments[0]
+                    else:
+                        payment = payment_detail
+                    
+                    # Check if payment has an invoice with line items
+                    if hasattr(payment, 'invoice') and payment.invoice and hasattr(payment.invoice, 'line_items') and payment.invoice.line_items:
                         for line_item in payment.invoice.line_items:
                             line_items.append({
                                 "accountCode": line_item.account_code if hasattr(line_item, 'account_code') else payment.account.code if hasattr(payment, 'account') and payment.account else "Unknown",
-                                "unitAmount": float(line_item.unit_amount) if hasattr(line_item, 'unit_amount') and line_item.unit_amount else 0.0,
-                                "quantity": float(line_item.quantity) if hasattr(line_item, 'quantity') and line_item.quantity else 1.0,
                                 "lineAmount": float(line_item.line_amount) if hasattr(line_item, 'line_amount') and line_item.line_amount else 0.0,
-                                "description": line_item.description if hasattr(line_item, 'description') else "Payment",
-                                "taxAmount": float(line_item.tax_amount) if hasattr(line_item, 'tax_amount') and line_item.tax_amount else 0.0
                             })
-                    else:
-                        # Fallback: create a default line item using payment details
-                        account_code = payment.account.code if hasattr(payment, 'account') and payment.account else "Unknown"
-                        line_items.append({
-                            "accountCode": account_code,
-                            "unitAmount": float(payment.amount) if hasattr(payment, 'amount') and payment.amount else 0.0,
-                            "quantity": 1.0,
-                            "lineAmount": float(payment.amount) if hasattr(payment, 'amount') and payment.amount else 0.0,
-                            "description": "Payment",
-                            "taxAmount": 0.0
+                    if line_items:
+                        detailed_payments.append({
+                            "transaction_id": payment.payment_id,
+                            "type": payment.payment_type,
+                            "total": payment.amount if hasattr(payment, 'amount') else 0.0,
+                            "lineItems": line_items
                         })
-                
-                if line_items:
-                    detailed_payments.append({
-                        "transaction_id": payment.payment_id,
-                        "type": payment.payment_type,
-                        "total": payment.amount if hasattr(payment, 'amount') else 0.0,
-                        "lineItems": line_items
-                    })
-                    
-            except Exception as e:
-                print(f"[CASHFLOW] Error getting detailed payment {payment.payment_id}: {e}")
-                continue
+                        
+                except Exception as e:
+                    print(f"[CASHFLOW] Error getting detailed payment {payment.payment_id}: {e}")
+                    continue
+            
+            # Add small delay between batches to respect rate limits
+            if i + batch_size < len(payments):
+                time.sleep(0.05)  # 50ms delay between batches
+
+            batch_end_time = time.time()
+            print(f"[CASHFLOW DEV DEBUG] Batch {i // batch_size + 1} completed in {batch_end_time - batch_start_time:.2f} seconds")
                 
         return detailed_payments
 
@@ -1171,7 +1109,6 @@ class XeroCashFlowService:
                 clean_line_items.append({
                     "accountCode": line_item.get("accountCode"),
                     "lineAmount": line_item.get("lineAmount"),
-                    "description": line_item.get("description"),
                 })
             return clean_line_items
         
@@ -1189,7 +1126,6 @@ class XeroCashFlowService:
                 clean_line_items.append({
                     "accountCode": line_item.get("accountCode"),
                     "lineAmount": line_item.get("lineAmount"),
-                    "description": line_item.get("description"),
                 })
             return clean_line_items
         
@@ -1203,7 +1139,6 @@ class XeroCashFlowService:
                 clean_line_items.append({
                     "accountCode": line_item.get("accountCode"),
                     "lineAmount": line_item.get("lineAmount"),
-                    "description": line_item.get("description"),
                 })
             return clean_line_items
         
@@ -1217,7 +1152,6 @@ class XeroCashFlowService:
             clean_line_items.append({
                 "accountCode": line_item.get("accountCode"),
                 "lineAmount": line_item.get("lineAmount"),
-                "description": line_item.get("description"),
                 "distributedAmount": round(distributed_amount, 2)
             })
         

@@ -1179,7 +1179,7 @@ def generate_cashflow_json_response(
             }
             
             # Process each period
-            for key, (start_date, end_date) in enumerate(date_ranges):
+            for start_date, end_date in date_ranges:
                 period_key = f"{start_date}_{end_date}"
                 period_data = account_data.get('periods', {}).get(period_key, {})
                 
@@ -1202,7 +1202,7 @@ def generate_cashflow_json_response(
         
         response["connections"].append(connection_info)
 
-        if 'final_totals' in connection_data:
-            response["final_totals"] = connection_data['final_totals']
+        # if 'final_totals' in connection_data:
+        #     response["final_totals"] = connection_data['final_totals']
     
     return response
