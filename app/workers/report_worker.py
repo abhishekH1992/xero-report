@@ -206,7 +206,7 @@ class ReportWorker:
         while True:
             try:
                 # Get fresh services for checking the queue
-                session, queue_service, _ = self._get_fresh_services()
+                session, queue_service, _, _ = self._get_fresh_services()
                 
                 try:
                     # Get next job from queue

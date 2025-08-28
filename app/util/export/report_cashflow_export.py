@@ -102,6 +102,8 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                 ownership_groups["partially_owned"].append(connection)
             elif connection.ownership == "not_owned":
                 ownership_groups["not_owned"].append(connection)
+
+        session.close()
         
         current_row = 1
         
@@ -1129,8 +1131,13 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
         for i in range(4 + balance_cols + spent_cols_count + received_cols_count, 4 + balance_cols + spent_cols_count + received_cols_count + additional_cols):
             ws.column_dimensions[get_column_letter(i)].width = 20
         
-    finally:
-        session.close()
+    except Exception as e:
+        # Make sure to close session even if there's an error
+        if session:
+            session.close()
+        print(f"Error in create_bank_balance_sheet: {e}")
+        # Raise the error again to propagate
+        raise e
 
 def generate_cashflow_json_response(
     cashflow_data: Dict[str, Any], 
