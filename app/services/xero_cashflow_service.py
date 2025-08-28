@@ -10,7 +10,7 @@ from app.util.report_helper import (
 from app.services.xero_auth import XeroAuthService
 from app.database.models import XeroConnection
 from app.util.db_session_manager import DatabaseSessionManager
-from app.util.export.report_cashflow_export import export_cashflow_to_excel, generate_cashflow_json_response
+from app.util.export.report_cashflow_export import export_cashflow_to_excel, generate_cashflow_json_response, generate_cashflow_table_response
 from fastapi import HTTPException
 import time
 import os
@@ -78,7 +78,7 @@ class XeroCashFlowService:
                     all_connections = self.xero_auth_service.get_all_connections()
                     connections = [
                         conn for conn in all_connections 
-                        if conn.business_type not in ["Project", "Stonewood Developments"]
+                        if conn.business_type not in ["Project", "Stonewood Developments", "Non-Operating"]
                     ]
                 
                 if not connections:
@@ -1097,22 +1097,22 @@ class XeroCashFlowService:
 
                 # Categorize based on category name
                 if category_type == "interestexpense":
-                    subcategorized["spent"]["interest_payment"]["data"].append(line_transaction)
+                    # subcategorized["spent"]["interest_payment"]["data"].append(line_transaction)
                     subcategorized["spent"]["interest_payment"]["total"] += amount_for_category
                 elif category_type == "payroll":
-                    subcategorized["spent"]["payroll"]["data"].append(line_transaction)
+                    # subcategorized["spent"]["payroll"]["data"].append(line_transaction)
                     subcategorized["spent"]["payroll"]["total"] += amount_for_category
                 elif category_type == "rates":
-                    subcategorized["spent"]["rates"]["data"].append(line_transaction)
+                    # subcategorized["spent"]["rates"]["data"].append(line_transaction)
                     subcategorized["spent"]["rates"]["total"] += amount_for_category
                 elif category_type == 'loan':
-                    subcategorized["spent"]["loan_payment"]["data"].append(line_transaction)
+                    # subcategorized["spent"]["loan_payment"]["data"].append(line_transaction)
                     subcategorized["spent"]["loan_payment"]["total"] += amount_for_category
                 elif category_type == "gst":
-                    subcategorized["spent"]["gst_payment"]["data"].append(line_transaction)
+                    # subcategorized["spent"]["gst_payment"]["data"].append(line_transaction)
                     subcategorized["spent"]["gst_payment"]["total"] += amount_for_category
                 else:
-                    subcategorized["spent"]["others"]["data"].append(line_transaction)
+                    # subcategorized["spent"]["others"]["data"].append(line_transaction)
                     subcategorized["spent"]["others"]["total"] += amount_for_category
         
                 # Process received transactions
@@ -1151,14 +1151,14 @@ class XeroCashFlowService:
                 
                 # Check if it's rental income
                 if category_type == "gst":
-                    subcategorized["received"]["gst_refund"]["data"].append(line_transaction)
+                    # subcategorized["received"]["gst_refund"]["data"].append(line_transaction)
                     subcategorized["received"]["gst_refund"]["total"] += amount_for_category
                 elif category_type == "rent":
-                    subcategorized["received"]["rental_income"]["data"].append(line_transaction)
+                    # subcategorized["received"]["rental_income"]["data"].append(line_transaction)
                     subcategorized["received"]["rental_income"]["total"] += amount_for_category
                 else:
                     # All other income goes to general income
-                    subcategorized["received"]["income"]["data"].append(line_transaction)
+                    # subcategorized["received"]["income"]["data"].append(line_transaction)
                     subcategorized["received"]["income"]["total"] += amount_for_category
         
         return subcategorized

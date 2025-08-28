@@ -1206,3 +1206,122 @@ def generate_cashflow_json_response(
         #     response["final_totals"] = connection_data['final_totals']
     
     return response
+
+def generate_cashflow_table_response(
+    cashflow_data: Dict[str, Any], 
+    date_ranges: List[Tuple[str, str]],
+    excel_file_path: str,
+    errors: List[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Generate table format response for CashFlow report.
+    
+    Args:
+        cashflow_data: Dictionary containing cashflow data
+        date_ranges: List of date ranges used in the report
+        excel_file_path: Path to the generated Excel file
+        errors: List of errors that occurred during processing
+    
+    Returns:
+        Table format response dictionary
+    """
+    response = {
+        "table_data": [],
+        "excel_file": excel_file_path,
+        "generated_at": datetime.now().isoformat(),
+        "report_config": {
+            "date_ranges": [{"start": start, "end": end} for start, end in date_ranges]
+        },
+        "errors": errors or []
+    }
+
+    # Create table headers
+    headers = ["Connection", "Bank", "Account Number", "Date Range"]
+    
+    # Add period-specific columns
+    for start_date, end_date in date_ranges:
+        headers.extend([
+            f"Opening Balance ({start_date})",
+            f"Cash Received ({start_date})", 
+            f"Cash Spent ({start_date})",
+            f"Closing Balance ({start_date})"
+        ])
+    
+    # Add spent/received detail columns for the most recent period
+    if date_ranges:
+        headers.extend([
+            "Spent Categories",
+            "Received Categories"
+        ])
+    
+    response["headers"] = headers
+
+    # Process each connection and create table rows
+    for connection_name, connection_data in cashflow_data.items():
+        connection_id = connection_data.get('connection_id', None)
+        
+        # Process each bank account
+        for account_data in connection_data.get('accounts', []):
+            bank_name = account_data.get('bank_name', '')
+            account_number = format_account_number(account_data.get('account_number', ''))
+            
+            # Process each period
+            for start_date, end_date in date_ranges:
+                period_key = f"{start_date}_{end_date}"
+                period_data = account_data.get('periods', {}).get(period_key, {})
+                
+                # Create base row data
+                row = [
+                    connection_name,           # Connection
+                    bank_name,                 # Bank
+                    account_number,            # Account Number
+                    f"{start_date} - {end_date}"  # Date Range
+                ]
+                
+                # Add period financial data
+                row.extend([
+                    period_data.get('opening_balance', 0),
+                    period_data.get('cash_received', 0),
+                    period_data.get('cash_spent', 0),
+                    period_data.get('closing_balance', 0)
+                ])
+                
+                # Add spent/received categories for the most recent period (key == 0)
+                if start_date == date_ranges[0][0]:  # First (most recent) period
+                    spent_categories = period_data.get('spent', {})
+                    received_categories = period_data.get('received', {})
+                    
+                    # Format categories as readable strings
+                    spent_str = ", ".join([f"{k}: ${v:,.2f}" for k, v in spent_categories.items()]) if spent_categories else "N/A"
+                    received_str = ", ".join([f"{k}: ${v:,.2f}" for k, v in received_categories.items()]) if received_categories else "N/A"
+                    
+                    row.extend([spent_str, received_str])
+                else:
+                    # For older periods, no spent/received details
+                    row.extend(["N/A", "N/A"])
+                
+                response["table_data"].append(row)
+    
+    # Add summary row
+    if response["table_data"]:
+        summary_row = ["TOTAL", "", "", ""]
+        
+        # Calculate totals for each period column
+        for period_idx in range(len(date_ranges)):
+            # Skip the first 4 columns (Connection, Bank, Account, Date Range)
+            base_idx = 4 + (period_idx * 4)
+            
+            # Sum opening balance, cash received, cash spent, closing balance
+            opening_total = sum(row[base_idx] for row in response["table_data"])
+            received_total = sum(row[base_idx + 1] for row in response["table_data"])
+            spent_total = sum(row[base_idx + 2] for row in response["table_data"])
+            closing_total = sum(row[base_idx + 3] for row in response["table_data"])
+            
+            summary_row.extend([opening_total, received_total, spent_total, closing_total])
+        
+        # Add N/A for spent/received categories in summary
+        summary_row.extend(["N/A", "N/A"])
+        
+        response["table_data"].append(summary_row)
+    
+    return response
