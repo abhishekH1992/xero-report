@@ -14,6 +14,7 @@ from app.util.export.report_cashflow_export import export_cashflow_to_excel, gen
 from fastapi import HTTPException
 import time
 import os
+import asyncio
 
 
 class XeroCashFlowService:
@@ -739,27 +740,30 @@ class XeroCashFlowService:
 
     def _get_detailed_payments(self, accounting_api: AccountingApi, tenant_id: str, payments: List, connection_db_id: str, report_start_date: str = None, report_end_date: str = None) -> List[Dict]:
         """
-        Get detailed line items for payments - BATCHED VERSION
+        Get detailed line items for payments - CONCURRENT API CALLS VERSION
         """
         detailed_payments = []
+        overall_start_time = time.time()
         
-        # Convert report dates to datetime for comparison
-        from datetime import datetime
-        start_date = None
-        end_date = None
-        if report_start_date and report_end_date:
-            start_date = datetime.strptime(report_start_date, "%Y-%m-%d")
-            end_date = datetime.strptime(report_end_date, "%Y-%m-%d")
+        print(f"[CASHFLOW] Starting concurrent processing of {len(payments)} payments")
+        print(f"[CASHFLOW] Batch size: {50}, Max concurrent batches: {3}")
         
-        # OPTIMIZATION: Process payments in smaller batches to avoid overwhelming the API
-        batch_size = 50  # Smaller batch size to avoid rate limiting
+        # OPTIMIZATION: Process payments in concurrent batches
+        batch_size = 50  # Keep batch size for rate limiting
+        max_concurrent_batches = 3  # Process 3 batches concurrently
         
-        for i in range(0, len(payments), batch_size):
-            batch_payments = payments[i:i + batch_size]
+        def process_payment_batch(batch_payments, batch_num):
+            """Process a single batch of payments"""
             batch_start_time = time.time()
+            batch_results = []
+            successful_payments = 0
+            failed_payments = 0
             
-            # Process batch with small delays to respect rate limits
-            for payment_data in batch_payments:
+            print(f"[CASHFLOW] Concurrent Batch {batch_num}: Starting processing of {len(batch_payments)} payments")
+            
+            # Process individual payments in the batch
+            for i, payment_data in enumerate(batch_payments, 1):
+                payment_start_time = time.time()
                 try:
                     payment_detail = accounting_api.get_payment(
                         tenant_id,
@@ -782,25 +786,93 @@ class XeroCashFlowService:
                                 "accountCode": line_item.account_code if hasattr(line_item, 'account_code') else payment.account.code if hasattr(payment, 'account') and payment.account else "Unknown",
                                 "lineAmount": float(line_item.line_amount) if hasattr(line_item, 'line_amount') and line_item.line_amount else 0.0,
                             })
+                    
                     if line_items:
-                        detailed_payments.append({
+                        batch_results.append({
                             "transaction_id": payment.payment_id,
                             "type": payment.payment_type,
                             "total": payment.amount if hasattr(payment, 'amount') else 0.0,
                             "lineItems": line_items
                         })
+                        successful_payments += 1
                         
                 except Exception as e:
-                    print(f"[CASHFLOW] Error getting detailed payment {payment.payment_id}: {e}")
+                    failed_payments += 1
+                    print(f"[CASHFLOW] Error getting detailed payment {payment_data.payment_id}: {e}")
                     continue
-            
-            # Add small delay between batches to respect rate limits
-            if i + batch_size < len(payments):
-                time.sleep(0.05)  # 50ms delay between batches
-
-            batch_end_time = time.time()
-            print(f"[CASHFLOW DEV DEBUG] Batch {i // batch_size + 1} completed in {batch_end_time - batch_start_time:.2f} seconds")
                 
+                payment_end_time = time.time()
+                payment_time = payment_end_time - payment_start_time
+                
+                # Log every 10th payment for progress tracking
+                if i % 10 == 0 or i == len(batch_payments):
+                    print(f"[CASHFLOW] Concurrent Batch {batch_num}: Payment {i}/{len(batch_payments)} completed in {payment_time:.3f}s")
+            
+            batch_end_time = time.time()
+            batch_total_time = batch_end_time - batch_start_time
+            batch_avg_time = batch_total_time / len(batch_payments) if batch_payments else 0
+            
+            print(f"[CASHFLOW] Concurrent Batch {batch_num}: COMPLETED in {batch_total_time:.2f}s")
+            print(f"[CASHFLOW] Concurrent Batch {batch_num}: {successful_payments} successful, {failed_payments} failed")
+            print(f"[CASHFLOW] Concurrent Batch {batch_num}: Average time per payment: {batch_avg_time:.3f}s")
+            
+            return batch_results
+        
+        # Create batches
+        batches = []
+        for i in range(0, len(payments), batch_size):
+            batch_payments = payments[i:i + batch_size]
+            batch_num = i // batch_size + 1
+            batches.append((batch_payments, batch_num))
+        
+        print(f"[CASHFLOW] Created {len(batches)} batches for concurrent processing")
+        
+        # Process batches concurrently using ThreadPoolExecutor for API calls
+        import concurrent.futures
+        
+        concurrent_start_time = time.time()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent_batches) as executor:
+            print(f"[CASHFLOW] ThreadPoolExecutor started with {max_concurrent_batches} workers")
+            
+            # Submit all batch processing tasks
+            future_to_batch = {
+                executor.submit(process_payment_batch, batch_payments, batch_num): batch_num 
+                for batch_payments, batch_num in batches
+            }
+            
+            print(f"[CASHFLOW] Submitted {len(future_to_batch)} batch tasks for concurrent execution")
+            
+            # Collect results as they complete
+            completed_batches = 0
+            for future in concurrent.futures.as_completed(future_to_batch):
+                batch_num = future_to_batch[future]
+                completed_batches += 1
+                try:
+                    batch_result = future.result()
+                    detailed_payments.extend(batch_result)
+                    print(f"[CASHFLOW] ✅ Batch {batch_num} results collected successfully")
+                except Exception as e:
+                    print(f"[CASHFLOW] ❌ Batch {batch_num} processing error: {e}")
+                    continue
+                
+                # Log progress
+                progress = (completed_batches / len(batches)) * 100
+                print(f"[CASHFLOW] Progress: {completed_batches}/{len(batches)} batches completed ({progress:.1f}%)")
+        
+        concurrent_end_time = time.time()
+        concurrent_total_time = concurrent_end_time - concurrent_start_time
+        
+        overall_end_time = time.time()
+        overall_total_time = overall_end_time - overall_start_time
+        
+        # Final summary
+        print(f"[CASHFLOW] 🎯 CONCURRENT PROCESSING COMPLETE!")
+        print(f"[CASHFLOW] Total payments processed: {len(payments)}")
+        print(f"[CASHFLOW] Total batches: {len(batches)}")
+        print(f"[CASHFLOW] Concurrent execution time: {concurrent_total_time:.2f}s")
+        print(f"[CASHFLOW] Overall processing time: {overall_total_time:.2f}s")
+        print(f"[CASHFLOW] Final results count: {len(detailed_payments)}")
+        
         return detailed_payments
 
     def _simple_categorize_spend_received(self, all_line_items: List[Dict[str, Any]]) -> Dict[str, Any]:
