@@ -39,6 +39,18 @@ class Settings(BaseSettings):
     
     # API Security - will be loaded manually
     api_key_list: List[str] = []
+
+    # Redis Configuration
+    redis_url: str = "redis://localhost:6379"
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_db: int = 0
+    redis_password: Optional[str] = None
+    redis_ssl: bool = False
+    
+    # Redis Cache Settings
+    redis_cache_ttl: int = 3600  # 1 hour default TTL
+    redis_report_cache_ttl: int = 86400  # 24 hours for report data
     
     class Config:
         env_file = ".env"
