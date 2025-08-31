@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from fastapi import HTTPException
 
@@ -9,6 +9,11 @@ from app.util.xero_connection import create_xero_api_client
 from app.util.token_manager import TokenManager
 from app.database.models import XeroConnection
 import os
+from app.services.redis_service import RedisService
+
+from app.util.report_helper import generate_bucket_names, process_financial_item
+from app.util.report_export import export_report_to_excel, generate_system_comments
+import pandas as pd
 
 
 class XeroAgedReceivablesService:
@@ -148,12 +153,46 @@ class XeroAgedReceivablesService:
             print("[DEV DEBUG] Got the overpayments", connection_data['tenant_name'])
             print("--------------------------------")
             # overpayments = []
-            # print("overpayments", overpayments);
+
+            filter_invoices = []
+            for invoice in invoices:
+                filter_invoices.append({
+                    "invoice_number": getattr(invoice, 'invoice_number', None),
+                    "invoice_id": getattr(invoice, 'invoice_id', None),
+                    "amount_due": float(getattr(invoice, 'amount_due', 0)),
+                    "due_date": getattr(invoice, 'due_date', None),
+                    "date": getattr(invoice, 'date', None),
+                    "status": getattr(invoice, 'status', None),
+                    "contact": getattr(invoice.contact, 'name', 'Unknown Contact') if hasattr(invoice, 'contact') and invoice.contact else 'Unknown Contact',
+                    "allocations": getattr(invoice, 'allocations', []),
+                    "is_negative": getattr(invoice, 'is_negative', False)
+                })
+
+            filter_credit_notes = []
+            for credit_note in credit_notes:
+                filter_credit_notes.append({
+                    "credit_note_number": getattr(credit_note, 'credit_note_number', None),
+                    "credit_note_id": getattr(credit_note, 'credit_note_id', None),
+                    "remaining_credit": float(getattr(credit_note, 'remaining_credit', 0)),
+                    "date": getattr(credit_note, 'date', None),
+                    "status": getattr(credit_note, 'status', None),
+                    "contact": getattr(credit_note.contact, 'name', 'Unknown Contact') if hasattr(credit_note, 'contact') and credit_note.contact else 'Unknown Contact',
+                })
+
+            filter_overpayments = []
+            for overpayment in overpayments:
+                filter_overpayments.append({
+                    "overpayment_id": getattr(overpayment, 'overpayment_id', None),
+                    "remaining_credit": float(getattr(overpayment, 'remaining_credit', 0)),
+                    "date": getattr(overpayment, 'date', None),
+                    "status": getattr(overpayment, 'status', None),
+                    "contact": getattr(overpayment.contact, 'name', 'Unknown Contact') if hasattr(overpayment, 'contact') and overpayment.contact else 'Unknown Contact',
+                })
 
             return {
-                "invoices": invoices,
-                "credit_notes": credit_notes,
-                "overpayments": overpayments,
+                "invoices": filter_invoices,
+                "credit_notes": filter_credit_notes,
+                "overpayments": filter_overpayments,
                 "report_date": report_date,
                 "periods": periods,
                 "period_of": period_of,
@@ -986,7 +1025,8 @@ class XeroAgedReceivablesService:
         show_current: bool = True,
         connection_id: str = None,
         is_response_only: int = 1,
-        format: int = 1
+        format: int = 1,
+        is_cache: bool = False
     ) -> Dict[str, Any]:
         """
         Generate complete aged receivables report with Excel export
@@ -1001,14 +1041,10 @@ class XeroAgedReceivablesService:
             connection_id: Connection ID(s) - comma-separated for multiple connections
             is_response_only: If 1, return response only without Excel generation
             format: If 1, return table format; if 0, return JSON format
-            
+            is_cache: Use cache (true) or not (false)
         Returns:
             Dict containing report data and Excel file path
         """
-        from datetime import datetime
-        from app.util.report_helper import calculate_aging_bucket, generate_bucket_names, process_financial_item
-        from app.util.report_export import export_report_to_excel, generate_system_comments
-        import pandas as pd
         
         # Parse report_date or use today
         if report_date:
@@ -1130,22 +1166,50 @@ class XeroAgedReceivablesService:
         
         all_report_data = {}
         total_invoices = 0
+
+        start_time = datetime.now()
+        print("--------------------------------")
+        print("[DEV DEBUG] Start Time", start_time)
+        print("--------------------------------")
         
         # Process each connection using connection data (no DB objects)
         for connection_data in connection_data_list:
             try:
-                # Fetch data for this connection with app_id support
-                data = await self.get_aged_receivables_data(
-                    connection_data=connection_data,  # Pass connection data instead of tenant_id
-                    report_date=report_date_obj,
-                    periods=periods,
-                    period_of=period_of,
-                    period_type=period_type,
-                    app_id=connection_data['app_id'],
-                    is_future_date=is_future_date
-                )
+                redis_service = RedisService()
+                # Redis cache key generation
+                cache_key = f"ar_report:{connection_data['tenant_id']}:{report_date}:{periods}:{period_type}"
 
-                # print("------------Data------------", data)
+                cached_data = redis_service.get_cache(cache_key)
+                if cached_data and is_cache:
+                    print(f"[REDIS] Cache hit for key: {cache_key}")
+                    data = cached_data
+                else:
+                    # Fetch data for this connection with app_id support
+                    data = await self.get_aged_receivables_data(
+                        connection_data=connection_data,  # Pass connection data instead of tenant_id
+                        report_date=report_date_obj,
+                        periods=periods,
+                        period_of=period_of,
+                        period_type=period_type,
+                        app_id=connection_data['app_id'],
+                        is_future_date=is_future_date
+                    )
+
+                    today = datetime.now().date()
+                    report_date_only = report_date_obj.date() if hasattr(report_date_obj, 'date') else report_date_obj
+
+                    if report_date_only > today:
+                        cache_ttl = 3600  # 1 hour for future dates
+                        print(f"[REDIS] Future date detected, setting TTL to 1 hour")
+                    elif report_date_only >= (today - timedelta(days=7)):
+                        cache_ttl = 86400  # 24 hours for dates within last 7 days
+                        print(f"[REDIS] Date within last 7 days, setting TTL to 24 hours")
+                    else:
+                        cache_ttl = 604800  # 7 days for older dates
+                        print(f"[REDIS] Date older than 7 days, setting TTL to 7 days")
+
+                    redis_service.set_cache(cache_key, data, ttl=cache_ttl)
+                    print(f"[REDIS] Cached data for key: {cache_key} with TTL: {cache_ttl}s")
                 
                 invoices = data["invoices"]
                 credit_notes = data["credit_notes"]
@@ -1174,8 +1238,7 @@ class XeroAgedReceivablesService:
                 print("--------------------------------")
                 
                 for invoice in invoices:
-                    contact_name = getattr(invoice.contact, 'name', 'Unknown Contact') if hasattr(invoice, 'contact') and invoice.contact else 'Unknown Contact'
-                    
+                    contact_name = invoice.get("contact", "Unknown Contact")
                     if contact_name not in contact_invoices:
                         contact_invoices[contact_name] = []
                     contact_invoices[contact_name].append(invoice)
@@ -1552,4 +1615,10 @@ class XeroAgedReceivablesService:
                 response_data["excel_generation_error"] = str(e)
                 response_data["excel_generation_details"] = error_details
         
+        end_time = datetime.now()
+        print("--------------------------------")
+        print("[DEV DEBUG] End Time", end_time)
+        print("[DEV DEBUG] Time Taken", end_time - start_time)
+        print("--------------------------------")
+
         return response_data

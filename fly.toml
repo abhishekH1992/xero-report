@@ -43,5 +43,9 @@ primary_region = 'syd'
 [[vm]]
   memory = '2gb'
   cpu_kind = 'shared'
-  cpus = 1
+  cpus = 2
   processes = ['app']
+
+[scale]
+  min = 1
+  max = 2

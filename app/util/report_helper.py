@@ -1,6 +1,8 @@
 from typing import List, Tuple, Any
 from datetime import datetime, timedelta
 import calendar
+import os
+import json
 
 def calculate_aging_bucket(report_date, due_date, periods: int, period_of: int, period_type: str, show_current: bool = True) -> str:
     """
@@ -110,49 +112,48 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
     """
 
     # Extract amount
-    amount = float(getattr(item, amount_field, 0))
+    amount = float(item.get(amount_field, 0))
 
     # For bank transactions, we allow positive amounts since we treat them as negative in the report
     if amount <= 0 and item_type != "bank_transaction":
         return report
     
     # Extract contact name
-    contact = getattr(item, "contact", None)
-    contact_name = getattr(contact, "name", "Unknown") if contact else "Unknown"
+    contact_name = item.get("contact", "Unknown Contact")
     
     # Extract item details based on type
     if item_type == "invoice":
-        item_number = getattr(item, "invoice_number", None)
-        item_id = getattr(item, "invoice_id", None)
-        status = getattr(item, "status", None)
+        item_number = item.get("invoice_number", None)
+        item_id = item.get("invoice_id", None)
+        status = item.get("status", None)
     elif item_type == "credit_note":
-        item_number = getattr(item, "credit_note_number", None)
-        item_id = getattr(item, "credit_note_id", None)
-        status = getattr(item, "status", None)
+        item_number = item.get("credit_note_number", None)
+        item_id = item.get("credit_note_id", None)
+        status = item.get("status", None)
     elif item_type == "bank_transaction":
-        item_number = f"{getattr(item, 'bank_transaction_id', 'Unknown')[:8]}"  # Short ID
-        item_id = getattr(item, "bank_transaction_id", None)
-        status = getattr(item, "status", None)
+        item_number = f"{item.get('bank_transaction_id', 'Unknown')[:8]}"  # Short ID
+        item_id = item.get("bank_transaction_id", None)
+        status = item.get("status", None)
     else:
         item_number = "Unknown"
         item_id = None
         status = None
     
     # Extract and process date
-    item_date = getattr(item, date_field, None)
+    item_date = item.get(date_field, None)
     
     # Handle special cases for credit notes (check allocations first)
-    if hasattr(item, "allocations") and getattr(item, "allocations", []):
-        allocations = getattr(item, "allocations", [])
-        if allocations and getattr(allocations[0], "date", None):
-            item_date = getattr(allocations[0], "date")
+    if hasattr(item, "allocations") and item.get("allocations", []):
+        allocations = item.get("allocations", [])
+        if allocations and item.get("date", None):
+            item_date = item.get("date")
     elif item_type == "credit_note":
         # Credit notes without allocations should use due_date for aging calculations
-        if hasattr(item, "due_date") and getattr(item, "due_date", None):
-            item_date = getattr(item, "due_date")
-        elif hasattr(item, "DueDate") and getattr(item, "DueDate", None):
+        if hasattr(item, "due_date") and item.get("due_date", None):
+            item_date = item.get("due_date")
+        elif hasattr(item, "DueDate") and item.get("DueDate", None):
             # Handle Xero API response format
-            item_date = getattr(item, "DueDate")
+            item_date = item.get("DueDate")
 
     # Convert datetime to date if needed
     if item_date and hasattr(item_date, "date"):
@@ -329,25 +330,23 @@ def format_account_number(account_number: str) -> str:
 
 def format_date_range_for_excel(start_date: str, end_date: str) -> str:
     """
-    Format date range for Excel column headers.
+    Format date for Excel column headers - shows only the end date.
     
     Args:
-        start_date: Start date in YYYY-MM-DD format
+        start_date: Start date in YYYY-MM-DD format (not used, kept for compatibility)
         end_date: End date in YYYY-MM-DD format
     
     Returns:
-        Formatted string (e.g., "21'Jul 2025 - 15'Jul 2025")
+        Formatted string (e.g., "21'Jul 2025")
     """
     try:
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
         end_dt = datetime.strptime(end_date, "%Y-%m-%d")
-        
-        start_formatted = f"{start_dt.day}'{start_dt.strftime('%b')} {start_dt.year}"
         end_formatted = f"{end_dt.day}'{end_dt.strftime('%b')} {end_dt.year}"
         
-        return f"{start_formatted} - {end_formatted}"
+        # Only show the end date, not the range
+        return end_formatted
     except ValueError:
-        return f"{start_date} - {end_date}"
+        return end_date
 
 
 def calculate_cash_balance_summary(cashflow_data: dict, date_ranges: List[Tuple[str, str]], 
@@ -364,11 +363,45 @@ def calculate_cash_balance_summary(cashflow_data: dict, date_ranges: List[Tuple[
     Returns:
         Dictionary containing calculated cash balance summary
     """
+    
+    # Calculate minimum cash holding from JSON file - only for companies in the report
+    minimum_cash_holding = 0.0
+    try:
+        json_file_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'min_account_balance_by_account.json')
+        if os.path.exists(json_file_path):
+            with open(json_file_path, 'r') as f:
+                min_balance_data = json.load(f)
+                
+                # Get list of companies that have data in the report
+                companies_in_report = set()
+                for connection in ownership_groups.get("fully_owned", []):
+                    if connection.tenant_name in cashflow_data:
+                        companies_in_report.add(connection.tenant_name)
+                for connection in ownership_groups.get("partially_owned", []):
+                    if connection.tenant_name in cashflow_data:
+                        companies_in_report.add(connection.tenant_name)
+                
+                # Sum minimum balances only for companies that are in the report
+                for tenant_id, tenant_accounts in min_balance_data.items():
+                    # Find the company name for this tenant_id
+                    company_name = None
+                    for connection in ownership_groups.get("fully_owned", []) + ownership_groups.get("partially_owned", []):
+                        if hasattr(connection, 'tenant_id') and connection.tenant_id == tenant_id:
+                            company_name = connection.tenant_name
+                            break
+                    
+                    # Only add to total if this company is in the report
+                    if company_name and company_name in companies_in_report:
+                        for account_balance in tenant_accounts.values():
+                            minimum_cash_holding += float(account_balance)
+    except Exception as e:
+        minimum_cash_holding = 0.0
+    
     summary = {
         "report_date": report_date,
         "periods": {},
         "term_deposit": 1300000.00,  # Static term deposit value
-        "minimum_cash_holding": 5000000.00  # Static minimum cash holding
+        "minimum_cash_holding": minimum_cash_holding  # Calculated from JSON file
     }
     
     # Calculate for each period
@@ -377,9 +410,11 @@ def calculate_cash_balance_summary(cashflow_data: dict, date_ranges: List[Tuple[
         summary["periods"][period_key] = {
             "fully_owned": 0.0,
             "partially_owned": 0.0,
+            "not_owned": 0.0,
             "total_available_cash": 0.0,
             "total_with_term_deposit": 0.0,
-            "minimum_cash_holding_excess": 0.0
+            "minimum_cash_holding_excess": 0.0,
+            "final_cash_balance": 0.0
         }
         
         # Calculate fully owned cash
@@ -400,10 +435,20 @@ def calculate_cash_balance_summary(cashflow_data: dict, date_ranges: List[Tuple[
                     closing_balance = period_data.get('closing_balance', 0)
                     summary["periods"][period_key]["partially_owned"] += float(closing_balance) if closing_balance else 0
         
+        # Calculate not owned cash
+        for connection in ownership_groups.get("not_owned", []):
+            connection_name = connection.tenant_name
+            if connection_name in cashflow_data:
+                for account_data in cashflow_data[connection_name].get('accounts', []):
+                    period_data = account_data.get('periods', {}).get(period_key, {})
+                    closing_balance = period_data.get('closing_balance', 0)
+                    summary["periods"][period_key]["not_owned"] += float(closing_balance) if closing_balance else 0
+        
         # Calculate totals
         period_summary = summary["periods"][period_key]
         period_summary["total_available_cash"] = period_summary["fully_owned"] + period_summary["partially_owned"]
         period_summary["total_with_term_deposit"] = period_summary["total_available_cash"] + summary["term_deposit"]
         period_summary["minimum_cash_holding_excess"] = period_summary["total_available_cash"] - summary["minimum_cash_holding"]
-    
+        period_summary["final_cash_balance"] = period_summary["total_with_term_deposit"] + period_summary["not_owned"]
+
     return summary

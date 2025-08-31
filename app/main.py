@@ -58,6 +58,8 @@ async def debug_config():
         "app1_client_secret": "SET" if settings.xero_app1_client_secret else "NOT_SET",
         "app2_client_id": settings.xero_app2_client_id[:10] + "..." if settings.xero_app2_client_id else "NOT_SET",
         "app2_client_secret": "SET" if settings.xero_app2_client_secret else "NOT_SET",
+        "app3_client_id": settings.xero_app3_client_id[:10] + "..." if settings.xero_app3_client_id else "NOT_SET",
+        "app3_client_secret": "SET" if settings.xero_app3_client_secret else "NOT_SET",
         "legacy_client_id": settings.xero_client_id[:10] + "..." if settings.xero_client_id else "NOT_SET",
         "legacy_client_secret": "SET" if settings.xero_client_secret else "NOT_SET",
         "redirect_uri": settings.xero_redirect_uri,

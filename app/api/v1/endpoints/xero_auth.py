@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from app.services.xero_auth import XeroAuthService
 from app.services.xero_app_manager import XeroAppManager
 from app.util.auth import api_key_auth
+from app.database.database import get_db
 # from app.models.xero_auth import XeroTokenResponse, XeroConnection
 
 router = APIRouter(
@@ -22,7 +23,7 @@ get_xero_auth_service = XeroAuthService.get_service_dependency()
 @router.get("/login")
 async def login(
     use_pkce: bool = Query(True, description="Use PKCE for enhanced security"),
-    app_id: int = Query(1, ge=1, le=2, description="Xero app ID (1-2)"),
+    app_id: int = Query(1, ge=1, le=3, description="Xero app ID (1-3)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """
@@ -50,7 +51,7 @@ async def login(
 
 @router.get("/login/{app_id}")
 async def login_with_app(
-    app_id: int = Path(..., ge=1, le=2, description="Xero app ID (1-2)"),
+    app_id: int = Path(..., ge=1, le=3, description="Xero app ID (1-3)"),
     use_pkce: bool = Query(True, description="Use PKCE for enhanced security"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
@@ -82,7 +83,7 @@ async def login_with_app(
 @router.get("/login/redirect")
 async def login_redirect(
     use_pkce: bool = Query(True, description="Use PKCE for enhanced security"),
-    app_id: int = Query(1, ge=1, le=2, description="Xero app ID (1-2)"),
+    app_id: int = Query(1, ge=1, le=3, description="Xero app ID (1-3)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """
@@ -102,7 +103,7 @@ async def login_redirect(
 @router.post("/refresh/{tenant_id}")
 async def refresh_token(
     tenant_id: str,
-    app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
+    app_id: Optional[int] = Query(None, ge=1, le=3, description="Xero app ID (1-3)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """
@@ -194,7 +195,7 @@ async def refresh_token(
 
 @router.get("/connections")
 async def list_connections(
-    app_id: Optional[int] = Query(None, ge=1, le=2, description="Filter by app ID"),
+    app_id: Optional[int] = Query(None, ge=1, le=3, description="Filter by app ID"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """List all Xero connections"""
@@ -207,11 +208,13 @@ async def list_connections(
                     "id": conn.id,
                     "tenant_id": conn.tenant_id,
                     "tenant_name": conn.tenant_name,
+                    "ownership": conn.ownership,
+                    "business_type": conn.business_type,
                     "app_id": conn.app_id,
-                    "expires_at": conn.expires_at.isoformat(),
-                    "is_active": conn.is_active,
-                    "created_at": conn.created_at.isoformat(),
-                    "updated_at": conn.updated_at.isoformat()
+                    # "expires_at": conn.expires_at.isoformat(),
+                    # "is_active": conn.is_active,
+                    # "created_at": conn.created_at.isoformat(),
+                    # "updated_at": conn.updated_at.isoformat()
                 }
                 for conn in connections
             ],
@@ -224,7 +227,7 @@ async def list_connections(
 @router.get("/connections/{tenant_id}")
 async def get_connection(
     tenant_id: str,
-    app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
+    app_id: Optional[int] = Query(None, ge=1, le=3, description="Xero app ID (1-3)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """Get connection details for a specific tenant"""
@@ -252,7 +255,7 @@ async def get_connection(
 @router.delete("/connections/{tenant_id}")
 async def delete_connection(
     tenant_id: str,
-    app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
+    app_id: Optional[int] = Query(None, ge=1, le=3, description="Xero app ID (1-3)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """Delete a connection for a specific tenant"""
@@ -271,7 +274,7 @@ async def delete_connection(
 @router.post("/connections/{tenant_id}/deactivate")
 async def deactivate_connection(
     tenant_id: str,
-    app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
+    app_id: Optional[int] = Query(None, ge=1, le=3, description="Xero app ID (1-3)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """Deactivate a connection for a specific tenant"""
@@ -290,7 +293,7 @@ async def deactivate_connection(
 @router.post("/connections/{tenant_id}/handle-invalid-grant")
 async def handle_invalid_grant(
     tenant_id: str,
-    app_id: int = Query(1, ge=1, le=2, description="Xero app ID (1-2)"),
+    app_id: int = Query(1, ge=1, le=3, description="Xero app ID (1-3)"),
     error_message: str = Query("Invalid grant error", description="Error message from the failed request"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
@@ -321,7 +324,7 @@ async def handle_invalid_grant(
 async def get_token_history(
     tenant_id: str,
     limit: int = Query(10, description="Number of history records to return"),
-    app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
+    app_id: Optional[int] = Query(None, ge=1, le=3, description="Xero app ID (1-3)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """Get token refresh history for a connection"""
@@ -403,10 +406,75 @@ async def cleanup_expired_states(
     return {"message": f"Cleaned up {deleted_count} expired states"} 
 
 
+@router.get("/accounts/{connection_id}")
+async def get_accounts_by_connection(
+    connection_id: int = Path(..., description="Connection ID to get accounts for"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get account details (account code, name, id) by connection ID
+    
+    Returns:
+    - List of accounts with their details
+    - Account count
+    - Connection information
+    """
+    try:
+        # Import models here to avoid circular imports
+        from app.database.models import XeroAccount, XeroCategory, XeroConnection
+        
+        # Get connection details
+        connection = db.query(XeroConnection).filter(
+            XeroConnection.id == connection_id
+        ).first()
+        
+        if not connection:
+            raise HTTPException(status_code=404, detail="Connection not found")
+        
+        # Get accounts with category information
+        accounts = db.query(
+            XeroAccount.id,
+            XeroAccount.account_code,
+            XeroAccount.name,
+            XeroCategory.name.label('category_name')
+        ).join(
+            XeroCategory, XeroAccount.category_id == XeroCategory.id
+        ).filter(
+            XeroAccount.connection_id == connection_id
+        ).all()
+        
+        # Format the response
+        account_list = []
+        for account in accounts:
+            account_list.append({
+                "id": account.id,
+                "account_code": account.account_code,
+                "name": account.name,
+                "category_name": account.category_name
+            })
+        
+        return {
+            "connection": {
+                "id": connection.id,
+                "tenant_id": connection.tenant_id,
+                "tenant_name": connection.tenant_name,
+                "app_id": connection.app_id
+            },
+            "accounts": account_list,
+            "count": len(account_list),
+            "total_records": len(account_list)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get accounts: {str(e)}")
+
+
 @router.get("/auth/scope/{tenant_id}")
 async def get_connection_scope(
     tenant_id: str,
-    app_id: Optional[int] = Query(None, ge=1, le=2, description="Xero app ID (1-2)"),
+    app_id: Optional[int] = Query(None, ge=1, le=3, description="Xero app ID (1-3)"),
     xero_service: XeroAuthService = Depends(get_xero_auth_service)
 ):
     """

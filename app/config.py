@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     xero_app1_client_secret: str
     xero_app2_client_id: str
     xero_app2_client_secret: str
+    xero_app3_client_id: str
+    xero_app3_client_secret: str
     
     # App Distribution Settings
     xero_tenant_app_mapping: str = ""
@@ -37,6 +39,18 @@ class Settings(BaseSettings):
     
     # API Security - will be loaded manually
     api_key_list: List[str] = []
+
+    # Redis Configuration
+    redis_url: str = "redis://localhost:6379"
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_db: int = 0
+    redis_password: Optional[str] = None
+    redis_ssl: bool = False
+    
+    # Redis Cache Settings
+    redis_cache_ttl: int = 3600  # 1 hour default TTL
+    redis_report_cache_ttl: int = 86400  # 24 hours for report data
     
     class Config:
         env_file = ".env"
@@ -117,6 +131,7 @@ class Settings(BaseSettings):
         app_configs = {
             1: {"client_id": self.xero_app1_client_id, "client_secret": self.xero_app1_client_secret},
             2: {"client_id": self.xero_app2_client_id, "client_secret": self.xero_app2_client_secret},
+            3: {"client_id": self.xero_app3_client_id, "client_secret": self.xero_app3_client_secret},
         }
         return app_configs.get(app_id, app_configs[1])  # Default to app 1
     
