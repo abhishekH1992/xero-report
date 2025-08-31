@@ -37,6 +37,7 @@ async def get_aged_receivables(
     is_response_only: int = Query(1, description="If 1, return response only without Excel generation"),
     format: int = Query(1, description="If 1, return table format; if 0, return JSON format"),
     is_local: bool = Query(False, description="Generate report immediately (true) or queue (false)"),
+    is_cache: bool = Query(True, description="Use cache (true) or not (false)"),
     db: Session = Depends(get_db)
 ):
     """
@@ -56,7 +57,8 @@ async def get_aged_receivables(
             show_current=show_current,
             connection_id=connection_id,
             is_response_only=is_response_only,
-            format=format
+            format=format,
+            is_cache=is_cache
         )
     else:
         # Queue the job for background processing using database
@@ -69,7 +71,8 @@ async def get_aged_receivables(
             "period_type": period_type,
             "app_id": app_id,
             "show_current": show_current,
-            "connection_id": connection_id
+            "connection_id": connection_id,
+            "is_cache": is_cache
         }
         
         job_id = queue_service.enqueue_job("aged_receivables_report", job_data)

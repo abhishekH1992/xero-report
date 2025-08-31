@@ -112,49 +112,48 @@ def process_financial_item(item, report_date, periods, period_of, period_type, b
     """
 
     # Extract amount
-    amount = float(getattr(item, amount_field, 0))
+    amount = float(item.get(amount_field, 0))
 
     # For bank transactions, we allow positive amounts since we treat them as negative in the report
     if amount <= 0 and item_type != "bank_transaction":
         return report
     
     # Extract contact name
-    contact = getattr(item, "contact", None)
-    contact_name = getattr(contact, "name", "Unknown") if contact else "Unknown"
+    contact_name = item.get("contact", "Unknown Contact")
     
     # Extract item details based on type
     if item_type == "invoice":
-        item_number = getattr(item, "invoice_number", None)
-        item_id = getattr(item, "invoice_id", None)
-        status = getattr(item, "status", None)
+        item_number = item.get("invoice_number", None)
+        item_id = item.get("invoice_id", None)
+        status = item.get("status", None)
     elif item_type == "credit_note":
-        item_number = getattr(item, "credit_note_number", None)
-        item_id = getattr(item, "credit_note_id", None)
-        status = getattr(item, "status", None)
+        item_number = item.get("credit_note_number", None)
+        item_id = item.get("credit_note_id", None)
+        status = item.get("status", None)
     elif item_type == "bank_transaction":
-        item_number = f"{getattr(item, 'bank_transaction_id', 'Unknown')[:8]}"  # Short ID
-        item_id = getattr(item, "bank_transaction_id", None)
-        status = getattr(item, "status", None)
+        item_number = f"{item.get('bank_transaction_id', 'Unknown')[:8]}"  # Short ID
+        item_id = item.get("bank_transaction_id", None)
+        status = item.get("status", None)
     else:
         item_number = "Unknown"
         item_id = None
         status = None
     
     # Extract and process date
-    item_date = getattr(item, date_field, None)
+    item_date = item.get(date_field, None)
     
     # Handle special cases for credit notes (check allocations first)
-    if hasattr(item, "allocations") and getattr(item, "allocations", []):
-        allocations = getattr(item, "allocations", [])
-        if allocations and getattr(allocations[0], "date", None):
-            item_date = getattr(allocations[0], "date")
+    if hasattr(item, "allocations") and item.get("allocations", []):
+        allocations = item.get("allocations", [])
+        if allocations and item.get("date", None):
+            item_date = item.get("date")
     elif item_type == "credit_note":
         # Credit notes without allocations should use due_date for aging calculations
-        if hasattr(item, "due_date") and getattr(item, "due_date", None):
-            item_date = getattr(item, "due_date")
-        elif hasattr(item, "DueDate") and getattr(item, "DueDate", None):
+        if hasattr(item, "due_date") and item.get("due_date", None):
+            item_date = item.get("due_date")
+        elif hasattr(item, "DueDate") and item.get("DueDate", None):
             # Handle Xero API response format
-            item_date = getattr(item, "DueDate")
+            item_date = item.get("DueDate")
 
     # Convert datetime to date if needed
     if item_date and hasattr(item_date, "date"):
