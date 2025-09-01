@@ -11,7 +11,7 @@ from app.database.models import XeroConnection
 import os
 from app.services.redis_service import RedisService
 
-from app.util.report_helper import generate_bucket_names, process_financial_item
+from app.util.report_helper import generate_bucket_names, process_financial_item, calculate_ttl_for_cache
 from app.util.report_export import export_report_to_excel, generate_system_comments
 import pandas as pd
 
@@ -1195,18 +1195,7 @@ class XeroAgedReceivablesService:
                         is_future_date=is_future_date
                     )
 
-                    today = datetime.now().date()
-                    report_date_only = report_date_obj.date() if hasattr(report_date_obj, 'date') else report_date_obj
-
-                    if report_date_only > today:
-                        cache_ttl = 3600  # 1 hour for future dates
-                        print(f"[REDIS] Future date detected, setting TTL to 1 hour")
-                    elif report_date_only >= (today - timedelta(days=7)):
-                        cache_ttl = 86400  # 24 hours for dates within last 7 days
-                        print(f"[REDIS] Date within last 7 days, setting TTL to 24 hours")
-                    else:
-                        cache_ttl = 604800  # 7 days for older dates
-                        print(f"[REDIS] Date older than 7 days, setting TTL to 7 days")
+                    cache_ttl = calculate_ttl_for_cache(report_date)
 
                     redis_service.set_cache(cache_key, data, ttl=cache_ttl)
                     print(f"[REDIS] Cached data for key: {cache_key} with TTL: {cache_ttl}s")
