@@ -97,6 +97,7 @@ async def get_cashflow_report(
     cashflow_service: XeroCashFlowService = Depends(get_cashflow_service),
     connection_ids: str = Query(None, description="Connection ID(s) - comma-separated for multiple connections"),
     is_local: bool = Query(False, description="Generate report immediately (true) or queue (false)"),
+    is_cache: bool = Query(True, description="Use cache (true) or not (false)"),
     db: Session = Depends(get_db)
 ):
     """
@@ -110,7 +111,8 @@ async def get_cashflow_report(
             report_date=report_date,
             period=period,
             period_of=period_of,
-            connection_ids=connection_ids
+            connection_ids=connection_ids,
+            is_cache=is_cache
         )
         return result
     else:
@@ -121,7 +123,8 @@ async def get_cashflow_report(
             "report_date": report_date,
             "period": period,
             "period_of": period_of,
-            "connection_ids": connection_ids
+            "connection_ids": connection_ids,
+            "is_cache": is_cache
         }
         
         job_id = queue_service.enqueue_job("cashflow_report", job_data)

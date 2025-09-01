@@ -452,3 +452,16 @@ def calculate_cash_balance_summary(cashflow_data: dict, date_ranges: List[Tuple[
         period_summary["final_cash_balance"] = period_summary["total_with_term_deposit"] + period_summary["not_owned"]
 
     return summary
+
+def calculate_ttl_for_cache(report_date: str) -> int:
+    """
+    Calculate TTL for cache based on report date.
+    """
+    today = datetime.now().date()
+    report_date_obj = datetime.strptime(report_date, "%Y-%m-%d").date()
+    if report_date_obj > today:
+        return 3600
+    elif report_date_obj >= (today - timedelta(days=7)):
+        return 86400
+    else:
+        return 604800

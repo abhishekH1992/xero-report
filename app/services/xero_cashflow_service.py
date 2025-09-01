@@ -5,7 +5,8 @@ from app.util.token_manager import TokenManager
 
 from app.util.xero_connection import create_xero_api_client
 from app.util.report_helper import (
-    calculate_date_ranges
+    calculate_date_ranges,
+    calculate_ttl_for_cache
 )
 from app.services.xero_auth import XeroAuthService
 from app.database.models import XeroConnection
@@ -15,10 +16,15 @@ from fastapi import HTTPException
 import time
 import os
 import asyncio
+from app.services.redis_service import RedisService
+from app.database.models import XeroAccount, XeroCategory
 
 
 class XeroCashFlowService:
     """Service for generating CashFlow reports from Xero data."""
+
+    redis_service = RedisService()
+    ttl = 604800
     
     def __init__(self, xero_auth_service: XeroAuthService):
         self.xero_auth_service = xero_auth_service
@@ -41,7 +47,8 @@ class XeroCashFlowService:
         report_date: str,
         period: int = 2,
         period_of: str = "Week",
-        connection_ids: str = None
+        connection_ids: str = None,
+        is_cache: bool = True
     ) -> Dict[str, Any]:
         """
         Get CashFlow data for all connections or a specific connection.
@@ -90,12 +97,29 @@ class XeroCashFlowService:
                 # Process each connection
                 for key, connection in enumerate(connections):
                     try:
-                        connection_data = await self._process_connection(
-                            connection, date_ranges
-                        )
-                        # Include connection_id in the data structure
-                        connection_data['connection_id'] = connection.tenant_id
-                        cashflow_data[connection.tenant_name] = connection_data
+                        # Redis cache key generation
+                        cache_key = f"cashflow_report:{connection.tenant_id}:{report_date}:{period}:{period_of}"
+
+                        # self.redis_service.clear_pattern(cache_key)
+                        cached_data = self.redis_service.get_cache(cache_key)
+                        if cached_data and is_cache:
+                            print(f"[CASHFLOW DEV DEBUG][REDIS] ------------------------------")
+                            print(f"[CASHFLOW DEV DEBUG][REDIS] Cache hit for key: {connection.tenant_name}")
+                            print(f"[CASHFLOW DEV DEBUG][REDIS] ------------------------------")
+                            # cached_data['connection_id'] = connection.tenant_id
+                            cashflow_data[connection.tenant_name] = cached_data
+                        else:
+                            connection_data = await self._process_connection(
+                                connection, date_ranges, is_cache
+                            )
+                                # Include connection_id in the data structure
+                            connection_data['connection_id'] = connection.tenant_id
+                            cashflow_data[connection.tenant_name] = connection_data
+
+                            cache_ttl = calculate_ttl_for_cache(report_date)
+
+                            self.redis_service.set_cache(cache_key, connection_data, ttl=cache_ttl)
+                        # print(f"[REDIS] Cached data for key: {cache_key} with TTL: {self.ttl}s")
                     except Exception as e:
                         error_msg = f"Error processing connection {connection.tenant_name}: {str(e)}"
                         print(f"[CASHFLOW] {error_msg}")
@@ -123,6 +147,7 @@ class XeroCashFlowService:
         self, 
         connection: XeroConnection, 
         date_ranges: List[Tuple[str, str]],
+        is_cache: bool = True
     ) -> Dict[str, Any]:
         """
         Process a single connection to get cashflow data.
@@ -153,7 +178,6 @@ class XeroCashFlowService:
                 bank_summary_data = self._get_bank_summary_data(
                     accounting_api, str(connection.tenant_id), start_date, end_date
                 )
-                print(f"[CASHFLOW DEV DEBUG] bank_summary_data={bank_summary_data}")
                 # Process each account in the summary
                 for account_id, account_data in bank_summary_data.items():
                     # Check if this account is ASB or ANZ by getting account details
@@ -170,7 +194,8 @@ class XeroCashFlowService:
                             accounting_api,
                             str(connection.tenant_id),
                             connection.id,
-                            key
+                            key,
+                            is_cache
                         )
                             
                         
@@ -417,7 +442,7 @@ class XeroCashFlowService:
     
     def _add_period_data_to_connection(self, connection_data: Dict[str, Any], account_details: Any, 
                                       period_data: Dict[str, Any], start_date: str, end_date: str, 
-                                      accounting_api: AccountingApi, tenant_id: str, connection_db_id: int, key: int):
+                                      accounting_api: AccountingApi, tenant_id: str, connection_db_id: int, key: int, is_cache: bool = True):
         """
         Add period data to connection data structure.
         
@@ -465,7 +490,7 @@ class XeroCashFlowService:
         if key == 0:
             # Only for the most recent period: collect transaction data and add spent/received
             bank_transaction_data = self._get_bank_transaction_data(
-                accounting_api, tenant_id, account_id, start_date, end_date, connection_db_id
+                accounting_api, tenant_id, account_id, start_date, end_date, connection_db_id, is_cache
             )
             period_info["spent"] = bank_transaction_data.get("spent", {})
             period_info["received"] = bank_transaction_data.get("received", {})
@@ -481,7 +506,7 @@ class XeroCashFlowService:
         existing_account["periods"][period_key] = period_info
 
 
-    def _get_bank_transaction_data(self, accounting_api: AccountingApi, tenant_id: str, account_id: str, start_date: str, end_date: str, connection_db_id: int) -> Dict[str, Any]:
+    def _get_bank_transaction_data(self, accounting_api: AccountingApi, tenant_id: str, account_id: str, start_date: str, end_date: str, connection_db_id: int, is_cache: bool = True) -> Dict[str, Any]:
         """
         Get bank transaction and payment data for a specific date range.
         
@@ -513,14 +538,19 @@ class XeroCashFlowService:
             
             # 1.3. Get specific bank transaction details with line items
             detailed_transactions = self._get_detailed_bank_transactions(
-                accounting_api, tenant_id, all_transactions
+                accounting_api, tenant_id, all_transactions, is_cache
             )
             
+            print(f"[CASHFLOW DEV DEBUG] detailed_transactions={len(detailed_transactions)}")
+
             # 1.4. Get specific payment details with line items
             detailed_payments = self._get_detailed_payments(
-                accounting_api, tenant_id, all_payments, connection_db_id, start_date, end_date
+                accounting_api, tenant_id, all_payments, is_cache
             )
+            # detailed_payments = []
             
+            print(f"[CASHFLOW DEV DEBUG] detailed_payments={len(detailed_payments)}")
+
             # 1.5. Merge and categorize all transactions and payments
             all_line_items = detailed_transactions + detailed_payments
 
@@ -680,7 +710,8 @@ class XeroCashFlowService:
         self, 
         accounting_api: AccountingApi, 
         tenant_id: str, 
-        transactions: List[Any]
+        transactions: List[Any],
+        is_cache: bool = True
     ) -> List[Dict[str, Any]]:
         """
         Get detailed line items for each bank transaction.
@@ -697,6 +728,17 @@ class XeroCashFlowService:
         
         for transaction in transactions:
             try:
+                # self.clear_bank_transaction_cache(tenant_id)
+                cache_key = f"bank_transaction:{tenant_id}:{transaction.bank_transaction_id}"
+                # self.redis_service.clear_pattern(cache_key)
+                if is_cache:
+                    cached_data = self.redis_service.get_cache(cache_key)
+                    if cached_data:
+                        # Use cached data directly
+                        detailed_transactions.append(cached_data)
+                        print(f"[CASHFLOW DEV DEBUG][REDIS] Cache hit transaction:{transaction.bank_transaction_id}")
+                        continue  # Skip to next transaction
+                
                 # Get specific bank transaction details
                 detailed_transaction = accounting_api.get_bank_transaction(
                     tenant_id,
@@ -724,13 +766,17 @@ class XeroCashFlowService:
                                 "accountCode": account_code,
                                 "lineAmount": float(transaction_detail.total or 0.0),
                             })
-                    
-                    detailed_transactions.append({
+
+                    transaction_data = {
                         "transaction_id": transaction.bank_transaction_id,
                         "type": transaction.type,
                         "total": transaction.total or 0.0,
                         "lineItems": line_items
-                    })
+                    }
+                    
+                    detailed_transactions.append(transaction_data)
+
+                    self.redis_service.set_cache(cache_key, transaction_data, ttl=self.ttl)
                     
             except Exception as e:
                 print(f"[CASHFLOW] Error getting detailed transaction {transaction.bank_transaction_id}: {str(e)}")
@@ -738,7 +784,7 @@ class XeroCashFlowService:
         
         return detailed_transactions
 
-    def _get_detailed_payments(self, accounting_api: AccountingApi, tenant_id: str, payments: List, connection_db_id: str, report_start_date: str = None, report_end_date: str = None) -> List[Dict]:
+    def _get_detailed_payments(self, accounting_api: AccountingApi, tenant_id: str, payments: List, is_cache: bool = True) -> List[Dict]:
         """
         Get detailed line items for payments - CONCURRENT API CALLS VERSION
         """
@@ -765,6 +811,15 @@ class XeroCashFlowService:
             for i, payment_data in enumerate(batch_payments, 1):
                 payment_start_time = time.time()
                 try:
+                    cache_key = f"payment:{tenant_id}:{payment_data.payment_id}"
+                    if is_cache:
+                        cached_data = self.redis_service.get_cache(cache_key)
+                        if cached_data:
+                            batch_results.append(cached_data)
+                            successful_payments += 1
+                            print(f"[CASHFLOW DEV DEBUG][REDIS] Cache hit payment:{payment_data.payment_id}")
+                            continue
+                    
                     payment_detail = accounting_api.get_payment(
                         tenant_id,
                         payment_data.payment_id
@@ -788,12 +843,18 @@ class XeroCashFlowService:
                             })
                     
                     if line_items:
-                        batch_results.append({
+
+                        payment_data = {
                             "transaction_id": payment.payment_id,
                             "type": payment.payment_type,
                             "total": payment.amount if hasattr(payment, 'amount') else 0.0,
                             "lineItems": line_items
-                        })
+                        }
+
+                        self.redis_service.set_cache(cache_key, payment_data, ttl=self.ttl)
+
+                        batch_results.append(payment_data)
+
                         successful_payments += 1
                         
                 except Exception as e:
@@ -998,8 +1059,12 @@ class XeroCashFlowService:
             Dictionary mapping account codes to their category information
         """
         try:
-            from app.database.models import XeroAccount, XeroCategory
-            
+
+            cache_key = f"account_mappings:{connection_id}"
+            cached_data = self.redis_service.get_cache(cache_key)
+            if cached_data:
+                return cached_data
+
             # Use session manager for database operations
             with self.session_manager.get_session() as session:
                 accounts = session.query(
@@ -1021,6 +1086,8 @@ class XeroCashFlowService:
                         "type": account.type,
                     }
                 
+                self.redis_service.set_cache(cache_key, account_mappings, ttl=self.ttl)
+
                 return account_mappings
                 
         except Exception as e:
@@ -1229,7 +1296,7 @@ class XeroCashFlowService:
         
         return clean_line_items
 
-    async def generate_cashflow_report(self, report_date: str, period: int, period_of: str, connection_ids: str) -> Dict[str, Any]:
+    async def generate_cashflow_report(self, report_date: str, period: int, period_of: str, connection_ids: str, is_cache: bool = True) -> Dict[str, Any]:
         """
         Generate cashflow report
         """
@@ -1251,7 +1318,8 @@ class XeroCashFlowService:
                 report_date=report_date_str,
                 period=period,
                 period_of=period_of,
-                connection_ids=connection_ids
+                connection_ids=connection_ids,
+                is_cache=is_cache
             )
             
             # Extract data and errors from result
