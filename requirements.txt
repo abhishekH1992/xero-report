@@ -17,3 +17,4 @@ pandas==2.1.4
 PyJWT==2.10.1
 redis==5.0.1
 hiredis==2.2.3
+certifi==2024.2.2

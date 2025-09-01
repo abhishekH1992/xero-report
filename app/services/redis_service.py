@@ -1,6 +1,8 @@
 import redis
 import json
 import pickle
+import ssl
+import certifi
 from typing import Any, Optional, Dict, List, Union
 from datetime import datetime, timedelta
 import hashlib
@@ -11,14 +13,51 @@ class RedisService:
     """Generic Redis service for caching and data storage"""
     
     def __init__(self):
-        self.redis_client = redis.Redis(
-            host=settings.redis_host,
-            port=settings.redis_port,
-            db=settings.redis_db,
-            password=settings.redis_password,
-            ssl=settings.redis_ssl,
-            decode_responses=False  # Keep as bytes for pickle compatibility
+        # Prefer a full rediss:// URL via secrets
+        url = settings.redis_url
+        if not url or url == "redis://localhost:6379":
+            # fallback, still using TLS when talking to Upstash
+            if settings.redis_password:
+                url = (
+                    f"rediss://default:{settings.redis_password}"
+                    f"@{settings.redis_host}:{settings.redis_port}/{settings.redis_db}"
+                )
+            else:
+                # Local development fallback
+                url = f"redis://{settings.redis_host}:{settings.redis_port}/{settings.redis_db}"
+
+        # Determine if this is a local or remote connection
+        is_local = (
+            'localhost' in url or 
+            '127.0.0.1' in url or 
+            (settings.redis_host in ['localhost', '127.0.0.1'] and not settings.redis_password)
         )
+        
+        if is_local:
+            # Local Redis - no SSL needed
+            self.redis_client = redis.from_url(
+                url,
+                decode_responses=False,                 # keep bytes for pickle
+                socket_timeout=5,
+                socket_connect_timeout=5,
+                health_check_interval=30,
+                retry_on_timeout=True,
+                max_connections=10,                     # connection pool limit
+            )
+        else:
+            # Remote Redis (Upstash) - use SSL
+            self.redis_client = redis.from_url(
+                url,
+                decode_responses=False,                 # keep bytes for pickle
+                ssl_cert_reqs=ssl.CERT_REQUIRED,        # verify server certs
+                ssl_ca_certs=certifi.where(),           # CA bundle
+                socket_timeout=5,
+                socket_connect_timeout=5,
+                health_check_interval=30,
+                retry_on_timeout=True,
+                max_connections=10,                     # connection pool limit
+            )
+
         self.default_ttl = settings.redis_cache_ttl
     
     def _generate_cache_key(self, prefix: str, **kwargs) -> str:
