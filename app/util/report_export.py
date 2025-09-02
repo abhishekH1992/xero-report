@@ -18,22 +18,26 @@ def generate_system_comments(invoice_details: Dict[str, List[Dict]], bucket_name
             comments.append(f"{bucket_name}:")
             for item in bucket_items:
                 item_number = item.get('item_number', 'Unknown')
+                item_id = item.get('item_id', 'Unknown')
                 amount = item.get('amount', 0)
                 is_negative = item.get('is_negative', False)
                 item_type = item.get('item_type', 'invoice')
                 
+                # Format based on item type with ID
                 if item_type == "credit_note":
-                    comments.append(f"{item_number} (Credit Note) = {amount:,.2f}")
+                    comments.append(f"{item_number} (Credit Note, ID: {item_id}) = {amount:,.2f}")
+                elif item_type == "overpayment":
+                    comments.append(f"{item_number} (Overpayment, ID: {item_id}) = {amount:,.2f}")
                 elif item_type == "bank_transaction":
-                    comments.append(f"{item_number} (Bank Transaction) = {amount:,.2f}")
+                    comments.append(f"{item_number} (Bank Transaction, ID: {item_id}) = {amount:,.2f}")
                 else:
                     if is_negative:
                         if item_number == "Invoice Overpayments":
                             comments.append(f"Invoice Overpayments (Paid upfront for future invoices) = {amount:,.2f}")
                         else:
-                            comments.append(f"{item_number} (Credit/Overpayment) = {amount:,.2f}")
+                            comments.append(f"{item_number} (Credit/Overpayment, ID: {item_id}) = {amount:,.2f}")
                     else:
-                        comments.append(f"{item_number} = {amount:,.2f}")
+                        comments.append(f"{item_number} (Invoice, ID: {item_id}) = {amount:,.2f}")
             comments.append("")  # blank line between buckets
     
     return "\n".join(comments) if comments else ""
