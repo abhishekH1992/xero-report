@@ -38,6 +38,7 @@ async def get_aged_receivables(
     format: int = Query(1, description="If 1, return table format; if 0, return JSON format"),
     is_local: bool = Query(False, description="Generate report immediately (true) or queue (false)"),
     is_cache: bool = Query(True, description="Use cache (true) or not (false)"),
+    email: str = Query(None, description="Email address to send the report to"),
     db: Session = Depends(get_db)
 ):
     """
@@ -58,7 +59,8 @@ async def get_aged_receivables(
             connection_id=connection_id,
             is_response_only=is_response_only,
             format=format,
-            is_cache=is_cache
+            is_cache=is_cache,
+            email=email
         )
     else:
         # Queue the job for background processing using database
@@ -72,7 +74,8 @@ async def get_aged_receivables(
             "app_id": app_id,
             "show_current": show_current,
             "connection_id": connection_id,
-            "is_cache": is_cache
+            "is_cache": is_cache,
+            "email": email
         }
         
         job_id = queue_service.enqueue_job("aged_receivables_report", job_data)
@@ -98,6 +101,7 @@ async def get_cashflow_report(
     connection_ids: str = Query(None, description="Connection ID(s) - comma-separated for multiple connections"),
     is_local: bool = Query(False, description="Generate report immediately (true) or queue (false)"),
     is_cache: bool = Query(True, description="Use cache (true) or not (false)"),
+    email: str = Query(None, description="Email address to send the report to"),
     db: Session = Depends(get_db)
 ):
     """
@@ -124,7 +128,8 @@ async def get_cashflow_report(
             "period": period,
             "period_of": period_of,
             "connection_ids": connection_ids,
-            "is_cache": is_cache
+            "is_cache": is_cache,
+            "email": email
         }
         
         job_id = queue_service.enqueue_job("cashflow_report", job_data)

@@ -43,7 +43,7 @@ class WebhookService:
         except Exception as e:
             print(f"[WEBHOOK] Error sending webhook: {e}")
     
-    async def send_report_completion_webhook(self, job_id: str, report_type: str, file_path: str, report_date: str):
+    async def send_report_completion_webhook(self, job_id: str, report_type: str, file_path: str, report_date: str, email: str = None):
         """Send webhook when report generation is complete"""
         webhook_data = {
             "job_id": job_id,
@@ -55,6 +55,10 @@ class WebhookService:
             "status": "completed",
             "message": f"{report_type.replace('_', ' ').title()} report generated successfully"
         }
+        
+        # Add email to webhook data if provided
+        if email:
+            webhook_data["email"] = email
         
         await self.send_webhook(webhook_data)
     

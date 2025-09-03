@@ -1026,7 +1026,8 @@ class XeroAgedReceivablesService:
         connection_id: str = None,
         is_response_only: int = 1,
         format: int = 1,
-        is_cache: bool = False
+        is_cache: bool = False,
+        email: str = None
     ) -> Dict[str, Any]:
         """
         Generate complete aged receivables report with Excel export
@@ -1042,6 +1043,7 @@ class XeroAgedReceivablesService:
             is_response_only: If 1, return response only without Excel generation
             format: If 1, return table format; if 0, return JSON format
             is_cache: Use cache (true) or not (false)
+            email: Email address to send the report to (optional)
         Returns:
             Dict containing report data and Excel file path
         """

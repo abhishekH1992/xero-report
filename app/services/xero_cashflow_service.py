@@ -1296,9 +1296,19 @@ class XeroCashFlowService:
         
         return clean_line_items
 
-    async def generate_cashflow_report(self, report_date: str, period: int, period_of: str, connection_ids: str, is_cache: bool = True) -> Dict[str, Any]:
+    async def generate_cashflow_report(self, report_date: str, period: int, period_of: str, connection_ids: str, is_cache: bool = True, email: str = None) -> Dict[str, Any]:
         """
         Generate cashflow report
+        
+        Args:
+            report_date: Report date in YYYY-MM-DD format
+            period: Number of periods to go back
+            period_of: Type of period (Week, Month, Year)
+            connection_ids: Connection ID(s) - comma-separated for multiple connections
+            is_cache: Use cache (true) or not (false)
+            email: Email address to send the report to (optional)
+        Returns:
+            Dict containing report data and Excel file path
         """
 
         if report_date:
