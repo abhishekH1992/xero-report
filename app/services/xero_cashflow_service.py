@@ -1221,6 +1221,7 @@ class XeroCashFlowService:
                     # subcategorized["received"]["gst_refund"]["data"].append(line_transaction)
                     subcategorized["received"]["gst_refund"]["total"] += amount_for_category
                 elif category_type == "rent":
+                    print(f"[CASHFLOW] Rental income: {transaction}")
                     # subcategorized["received"]["rental_income"]["data"].append(line_transaction)
                     subcategorized["received"]["rental_income"]["total"] += amount_for_category
                 else:

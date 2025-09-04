@@ -87,7 +87,7 @@ async def get_invoice_by_id(
 
             # Get account information for each line item
             line_items_with_accounts = []
-            for item in invoice.get('line_items', []):
+            for item in (invoice.get('line_items') or []):
                 account_code = item.get('account_code')
                 account_info = None
                 
@@ -100,8 +100,8 @@ async def get_invoice_by_id(
                     "unit_amount": item.get('unit_amount'),
                     "line_amount": item.get('line_amount'),
                     "account_code": account_code,
-                    "account_code_name": account_info.get('name') if account_info else None,
-                    "account_code_type": account_info.get('type') if account_info else None
+                    "account_code_name": account_info.get('name') if account_info is not None else None,
+                    "account_code_type": account_info.get('type') if account_info is not None else None
                 })
             
             # Extract only the required fields from the invoice
@@ -124,7 +124,7 @@ async def get_invoice_by_id(
                         "payment_id": payment.get('payment_id'),
                         "amount": payment.get('amount')
                     }
-                    for payment in invoice.get('payments', [])
+                    for payment in (invoice.get('payments') or [])
                 ],
                 "amount_due": invoice.get('amount_due'),
                 "amount_paid": invoice.get('amount_paid')
@@ -220,7 +220,7 @@ async def get_credit_note_by_id(
             
             # Get account information for each line item
             line_items_with_accounts = []
-            for item in credit_note.get('line_items', []):
+            for item in (credit_note.get('line_items') or []):
                 account_code = item.get('account_code')
                 account_info = None
                 
@@ -233,8 +233,8 @@ async def get_credit_note_by_id(
                     "unit_amount": item.get('unit_amount'),
                     "line_amount": item.get('line_amount'),
                     "account_code": account_code,
-                    "account_code_name": account_info.get('name') if account_info else None,
-                    "account_code_type": account_info.get('type') if account_info else None
+                    "account_code_name": account_info.get('name') if account_info is not None else None,
+                    "account_code_type": account_info.get('type') if account_info is not None else None
                 })
             
             # Extract only the required fields from the credit note
@@ -257,7 +257,7 @@ async def get_credit_note_by_id(
                         "payment_id": payment.get('payment_id'),
                         "amount": payment.get('amount')
                     }
-                    for payment in credit_note.get('payments', [])
+                    for payment in (credit_note.get('payments') or [])
                 ],
                 "allocations": [
                     {
@@ -266,7 +266,7 @@ async def get_credit_note_by_id(
                         "amount": allocation.get('amount'),
                         "date": allocation.get('date')
                     }
-                    for allocation in credit_note.get('allocations', [])
+                    for allocation in (credit_note.get('allocations') or [])
                 ],
                 "remaining_credit": credit_note.get('remaining_credit'),
                 "total": credit_note.get('total')
@@ -362,7 +362,7 @@ async def get_overpayment_by_id(
             
             # Get account information for each line item
             line_items_with_accounts = []
-            for item in overpayment.get('line_items', []):
+            for item in (overpayment.get('line_items') or []):
                 account_code = item.get('account_code')
                 account_info = None
                 
@@ -375,8 +375,8 @@ async def get_overpayment_by_id(
                     "unit_amount": item.get('unit_amount'),
                     "line_amount": item.get('line_amount'),
                     "account_code": account_code,
-                    "account_code_name": account_info.get('name') if account_info else None,
-                    "account_code_type": account_info.get('type') if account_info else None
+                    "account_code_name": account_info.get('name') if account_info is not None else None,
+                    "account_code_type": account_info.get('type') if account_info is not None else None
                 })
             
             # Extract only the required fields from the overpayment
@@ -397,7 +397,7 @@ async def get_overpayment_by_id(
                         "payment_id": payment.get('payment_id'),
                         "amount": payment.get('amount')
                     }
-                    for payment in overpayment.get('payments', [])
+                    for payment in (overpayment.get('payments') or [])
                 ],
                 "allocations": [
                     {
@@ -406,7 +406,7 @@ async def get_overpayment_by_id(
                         "amount": allocation.get('amount'),
                         "date": allocation.get('date')
                     }
-                    for allocation in overpayment.get('allocations', [])
+                    for allocation in (overpayment.get('allocations') or [])
                 ],
                 "remaining_credit": overpayment.get('remaining_credit'),
                 "total": overpayment.get('total')
