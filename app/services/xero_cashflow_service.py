@@ -1058,6 +1058,7 @@ class XeroCashFlowService:
         try:
 
             cache_key = f"account_mappings:{connection_id}"
+            # self.redis_service.clear_pattern('account_mappings:*')
             cached_data = self.redis_service.get_cache(cache_key)
             if cached_data:
                 return cached_data
@@ -1150,21 +1151,19 @@ class XeroCashFlowService:
                         amount_for_category = (line_amount / total_line_amounts) * transaction_total
                     else:
                         amount_for_category = transaction_total
-                
-                # Create a transaction entry for this line item
-                # line_transaction = {
-                #     "transaction_id": transaction["transaction_id"],
-                #     "type": transaction["type"],
-                #     "lineItems": [line_item],
-                #     "category_name": category_info.get("name"),
-                #     "category_type": category_info.get("type")
-                # }
 
                 # Categorize based on category name
                 if category_type == "interestexpense":
                     # subcategorized["spent"]["interest_payment"]["data"].append(line_transaction)
                     subcategorized["spent"]["interest_payment"]["total"] += amount_for_category
                 elif category_type == "payroll":
+
+                    print(f"[CASHFLOW] --------------------------------")
+                    print(f"[CASHFLOW] Category type: {category_type}")
+                    print(f"[CASHFLOW] Account code: {account_code}")
+                    print(f"[CASHFLOW] Amount for category: {amount_for_category}")
+                    print(f"[CASHFLOW] Transaction: {transaction.get('transaction_id')}")
+                    print(f"[CASHFLOW] --------------------------------")
                     # subcategorized["spent"]["payroll"]["data"].append(line_transaction)
                     subcategorized["spent"]["payroll"]["total"] += amount_for_category
                 elif category_type == "rates":
@@ -1205,27 +1204,18 @@ class XeroCashFlowService:
                     else:
                         amount_for_category = transaction_total
                 
-                # Create a transaction entry for this line item
-                # line_transaction = {
-                #     "transaction_id": transaction["transaction_id"],
-                #     "type": transaction["type"],
-                #     "lineItems": [line_item],
-                #     "category_name": category_info.get("name"),
-                #     "category_type": category_info.get("type")
-                # }
-                
                 # Check if it's rental income
                 if category_type == "gst":
                     # subcategorized["received"]["gst_refund"]["data"].append(line_transaction)
                     subcategorized["received"]["gst_refund"]["total"] += amount_for_category
                 elif category_type == "rent":
-                    print(f"[CASHFLOW] Rental income: {transaction}")
                     # subcategorized["received"]["rental_income"]["data"].append(line_transaction)
                     subcategorized["received"]["rental_income"]["total"] += amount_for_category
                 elif category_type == "deposits / transfers":
                     print(f"[CASHFLOW] Deposits / Transfers income: {transaction}")
                     subcategorized["received"]["deposits_transfers"]["total"] += amount_for_category
                 else:
+                    print(f"[CASHFLOW] income: {transaction}")
                     # All other income goes to general income
                     # subcategorized["received"]["income"]["data"].append(line_transaction)
                     subcategorized["received"]["income"]["total"] += amount_for_category
