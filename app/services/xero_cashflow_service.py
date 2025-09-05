@@ -99,8 +99,6 @@ class XeroCashFlowService:
                     try:
                         # Redis cache key generation
                         cache_key = f"cashflow_report:{connection.tenant_id}:{report_date}:{period}:{period_of}"
-
-                        # self.redis_service.clear_pattern(cache_key)
                         cached_data = self.redis_service.get_cache(cache_key)
                         if cached_data and is_cache:
                             print(f"[CASHFLOW DEV DEBUG][REDIS] ------------------------------")
@@ -730,7 +728,6 @@ class XeroCashFlowService:
             try:
                 # self.clear_bank_transaction_cache(tenant_id)
                 cache_key = f"bank_transaction:{tenant_id}:{transaction.bank_transaction_id}"
-                # self.redis_service.clear_pattern(cache_key)
                 if is_cache:
                     cached_data = self.redis_service.get_cache(cache_key)
                     if cached_data:
@@ -1122,7 +1119,8 @@ class XeroCashFlowService:
             "received": {
                 "gst_refund": {"total": 0.0, "data": []},
                 "income": {"total": 0.0, "data": []},
-                "rental_income": {"total": 0.0, "data": []}
+                "rental_income": {"total": 0.0, "data": []},
+                "deposits_transfers": {"total": 0.0, "data": []}
             }
         }
         
@@ -1154,13 +1152,13 @@ class XeroCashFlowService:
                         amount_for_category = transaction_total
                 
                 # Create a transaction entry for this line item
-                line_transaction = {
-                    "transaction_id": transaction["transaction_id"],
-                    "type": transaction["type"],
-                    "lineItems": [line_item],
-                    "category_name": category_info.get("name"),
-                    "category_type": category_info.get("type")
-                }
+                # line_transaction = {
+                #     "transaction_id": transaction["transaction_id"],
+                #     "type": transaction["type"],
+                #     "lineItems": [line_item],
+                #     "category_name": category_info.get("name"),
+                #     "category_type": category_info.get("type")
+                # }
 
                 # Categorize based on category name
                 if category_type == "interestexpense":
@@ -1208,13 +1206,13 @@ class XeroCashFlowService:
                         amount_for_category = transaction_total
                 
                 # Create a transaction entry for this line item
-                line_transaction = {
-                    "transaction_id": transaction["transaction_id"],
-                    "type": transaction["type"],
-                    "lineItems": [line_item],
-                    "category_name": category_info.get("name"),
-                    "category_type": category_info.get("type")
-                }
+                # line_transaction = {
+                #     "transaction_id": transaction["transaction_id"],
+                #     "type": transaction["type"],
+                #     "lineItems": [line_item],
+                #     "category_name": category_info.get("name"),
+                #     "category_type": category_info.get("type")
+                # }
                 
                 # Check if it's rental income
                 if category_type == "gst":
@@ -1224,6 +1222,9 @@ class XeroCashFlowService:
                     print(f"[CASHFLOW] Rental income: {transaction}")
                     # subcategorized["received"]["rental_income"]["data"].append(line_transaction)
                     subcategorized["received"]["rental_income"]["total"] += amount_for_category
+                elif category_type == "deposits / transfers":
+                    print(f"[CASHFLOW] Deposits / Transfers income: {transaction}")
+                    subcategorized["received"]["deposits_transfers"]["total"] += amount_for_category
                 else:
                     # All other income goes to general income
                     # subcategorized["received"]["income"]["data"].append(line_transaction)
