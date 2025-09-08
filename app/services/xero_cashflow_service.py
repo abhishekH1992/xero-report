@@ -555,7 +555,7 @@ class XeroCashFlowService:
             print(f"[CASHFLOW DEV DEBUG] Cashflow categories: {len(all_line_items)}")
             
             # Get both simple and subcategorized data
-            categorized_data = self.get_categorized_cashflow(all_line_items, connection_db_id) if len(all_line_items) > 0 else {}
+            categorized_data = self.get_categorized_cashflow(all_line_items, connection_db_id, account_id) if len(all_line_items) > 0 else {}
             
             # Write debug data to JSON
             # with open("simple_categorized_debug.json", "w") as f:
@@ -1026,7 +1026,7 @@ class XeroCashFlowService:
         
         return simple_categorized
 
-    def get_categorized_cashflow(self, all_line_items: List[Dict[str, Any]], connection_id: int) -> Dict[str, Any]:
+    def get_categorized_cashflow(self, all_line_items: List[Dict[str, Any]], connection_id: int, account_id: str) -> Dict[str, Any]:
         """
         Get both simple and subcategorized cashflow data.
         
@@ -1041,7 +1041,7 @@ class XeroCashFlowService:
         simple_categorized = self._simple_categorize_spend_received(all_line_items)
         
         # Then apply subcategory mapping
-        subcategorized = self._categorize_to_subcategories(simple_categorized, connection_id)
+        subcategorized = self._categorize_to_subcategories(simple_categorized, connection_id, account_id)
         
         return subcategorized
 
@@ -1058,7 +1058,7 @@ class XeroCashFlowService:
         try:
 
             cache_key = f"account_mappings:{connection_id}"
-            # self.redis_service.clear_pattern('account_mappings:*')
+            self.redis_service.clear_pattern(f'account_mappings:{cache_key}')
             cached_data = self.redis_service.get_cache(cache_key)
             if cached_data:
                 return cached_data
@@ -1092,7 +1092,7 @@ class XeroCashFlowService:
             print(f"[CASHFLOW] Error getting account mappings: {e}")
             return {}
 
-    def _categorize_to_subcategories(self, simple_categorized: Dict[str, Any], connection_id: int) -> Dict[str, Any]:
+    def _categorize_to_subcategories(self, simple_categorized: Dict[str, Any], connection_id: int, account_id: str) -> Dict[str, Any]:
         """
         Categorize transactions into subcategories based on account codes and database categories.
         
@@ -1124,6 +1124,8 @@ class XeroCashFlowService:
                 "deposits_transfers": {"total": 0.0, "data": []}
             }
         }
+
+        write_to_file_t = account_id == "dd1cbaeb-788f-43fd-8967-40daa0212190"
         
         # Process spent transactions
         for transaction in simple_categorized.get("spent", {}).get("data", []):
@@ -1152,18 +1154,16 @@ class XeroCashFlowService:
                     else:
                         amount_for_category = transaction_total
 
+
+                if write_to_file_t:
+                    with open("category_type.json", "a") as f:
+                        f.write(f"{transaction}\n")
+
                 # Categorize based on category name
                 if category_type == "interestexpense":
                     # subcategorized["spent"]["interest_payment"]["data"].append(line_transaction)
                     subcategorized["spent"]["interest_payment"]["total"] += amount_for_category
                 elif category_type == "payroll":
-
-                    print(f"[CASHFLOW] --------------------------------")
-                    print(f"[CASHFLOW] Category type: {category_type}")
-                    print(f"[CASHFLOW] Account code: {account_code}")
-                    print(f"[CASHFLOW] Amount for category: {amount_for_category}")
-                    print(f"[CASHFLOW] Transaction: {transaction.get('transaction_id')}")
-                    print(f"[CASHFLOW] --------------------------------")
                     # subcategorized["spent"]["payroll"]["data"].append(line_transaction)
                     subcategorized["spent"]["payroll"]["total"] += amount_for_category
                 elif category_type == "rates":
@@ -1209,13 +1209,13 @@ class XeroCashFlowService:
                     # subcategorized["received"]["gst_refund"]["data"].append(line_transaction)
                     subcategorized["received"]["gst_refund"]["total"] += amount_for_category
                 elif category_type == "rent":
+                    # print(f"[CASHFLOW] rental income: {transaction}")
                     # subcategorized["received"]["rental_income"]["data"].append(line_transaction)
                     subcategorized["received"]["rental_income"]["total"] += amount_for_category
                 elif category_type == "deposits / transfers":
-                    print(f"[CASHFLOW] Deposits / Transfers income: {transaction}")
+                    # print(f"[CASHFLOW] Deposits / Transfers income: {transaction}")
                     subcategorized["received"]["deposits_transfers"]["total"] += amount_for_category
                 else:
-                    print(f"[CASHFLOW] income: {transaction}")
                     # All other income goes to general income
                     # subcategorized["received"]["income"]["data"].append(line_transaction)
                     subcategorized["received"]["income"]["total"] += amount_for_category
