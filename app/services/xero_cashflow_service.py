@@ -1058,7 +1058,6 @@ class XeroCashFlowService:
         try:
 
             cache_key = f"account_mappings:{connection_id}"
-            self.redis_service.clear_pattern(f'account_mappings:{cache_key}')
             cached_data = self.redis_service.get_cache(cache_key)
             if cached_data:
                 return cached_data
