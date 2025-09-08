@@ -71,6 +71,9 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
     
     # Helper to map column header to data key
     def _col_name_to_key(name: str) -> str:
+        # Special mapping for specific column names
+        if name.strip() == "Deposits / Transfers":
+            return "deposits_transfers"
         return name.strip().lower().replace(" ", "_")
     
     # Get ownership data from database
@@ -691,7 +694,7 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                 cell.border = border
 
                 # Merge and write Received header (immediately after Balance)
-                received_cols = ["GST Refund", "Income", "Rental Income"]
+                received_cols = ["GST Refund", "Income", "Rental Income", "Deposits / Transfers"]
                 received_start_idx = spent_end_idx + 1
                 received_end_idx   = received_start_idx + len(received_cols) - 1
                 received_start_col = get_column_letter(received_start_idx)
@@ -1025,7 +1028,9 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
                     # Calculate and add received column totals
                     received_totals = {
                         "income": 0.0,
-                        "rental_income": 0.0
+                        "rental_income": 0.0,
+                        "gst_refund": 0.0,
+                        "deposits_transfers": 0.0
                     }
                     
                     # Sum up received totals from all accounts in this bank
@@ -1118,8 +1123,8 @@ def create_bank_balance_sheet(ws, cashflow_data: Dict[str, Any], date_ranges: Li
         for i in range(4 + balance_cols, 4 + balance_cols + spent_cols_count):
             ws.column_dimensions[get_column_letter(i)].width = 20
         
-        # Set width for received columns (Income, Rental Income)
-        received_cols_count = 2  # Number of received columns
+        # Set width for received columns (GST Refund, Income, Rental Income, Deposits / Transfers)
+        received_cols_count = 4  # Number of received columns
         for i in range(4 + balance_cols + spent_cols_count, 4 + balance_cols + spent_cols_count + received_cols_count):
             ws.column_dimensions[get_column_letter(i)].width = 20
         

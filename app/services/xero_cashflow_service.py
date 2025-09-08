@@ -99,8 +99,6 @@ class XeroCashFlowService:
                     try:
                         # Redis cache key generation
                         cache_key = f"cashflow_report:{connection.tenant_id}:{report_date}:{period}:{period_of}"
-
-                        # self.redis_service.clear_pattern(cache_key)
                         cached_data = self.redis_service.get_cache(cache_key)
                         if cached_data and is_cache:
                             print(f"[CASHFLOW DEV DEBUG][REDIS] ------------------------------")
@@ -557,7 +555,7 @@ class XeroCashFlowService:
             print(f"[CASHFLOW DEV DEBUG] Cashflow categories: {len(all_line_items)}")
             
             # Get both simple and subcategorized data
-            categorized_data = self.get_categorized_cashflow(all_line_items, connection_db_id) if len(all_line_items) > 0 else {}
+            categorized_data = self.get_categorized_cashflow(all_line_items, connection_db_id, account_id) if len(all_line_items) > 0 else {}
             
             # Write debug data to JSON
             # with open("simple_categorized_debug.json", "w") as f:
@@ -730,7 +728,6 @@ class XeroCashFlowService:
             try:
                 # self.clear_bank_transaction_cache(tenant_id)
                 cache_key = f"bank_transaction:{tenant_id}:{transaction.bank_transaction_id}"
-                # self.redis_service.clear_pattern(cache_key)
                 if is_cache:
                     cached_data = self.redis_service.get_cache(cache_key)
                     if cached_data:
@@ -1029,7 +1026,7 @@ class XeroCashFlowService:
         
         return simple_categorized
 
-    def get_categorized_cashflow(self, all_line_items: List[Dict[str, Any]], connection_id: int) -> Dict[str, Any]:
+    def get_categorized_cashflow(self, all_line_items: List[Dict[str, Any]], connection_id: int, account_id: str) -> Dict[str, Any]:
         """
         Get both simple and subcategorized cashflow data.
         
@@ -1044,7 +1041,7 @@ class XeroCashFlowService:
         simple_categorized = self._simple_categorize_spend_received(all_line_items)
         
         # Then apply subcategory mapping
-        subcategorized = self._categorize_to_subcategories(simple_categorized, connection_id)
+        subcategorized = self._categorize_to_subcategories(simple_categorized, connection_id, account_id)
         
         return subcategorized
 
@@ -1061,6 +1058,7 @@ class XeroCashFlowService:
         try:
 
             cache_key = f"account_mappings:{connection_id}"
+            self.redis_service.clear_pattern(f'account_mappings:{cache_key}')
             cached_data = self.redis_service.get_cache(cache_key)
             if cached_data:
                 return cached_data
@@ -1094,7 +1092,7 @@ class XeroCashFlowService:
             print(f"[CASHFLOW] Error getting account mappings: {e}")
             return {}
 
-    def _categorize_to_subcategories(self, simple_categorized: Dict[str, Any], connection_id: int) -> Dict[str, Any]:
+    def _categorize_to_subcategories(self, simple_categorized: Dict[str, Any], connection_id: int, account_id: str) -> Dict[str, Any]:
         """
         Categorize transactions into subcategories based on account codes and database categories.
         
@@ -1122,9 +1120,12 @@ class XeroCashFlowService:
             "received": {
                 "gst_refund": {"total": 0.0, "data": []},
                 "income": {"total": 0.0, "data": []},
-                "rental_income": {"total": 0.0, "data": []}
+                "rental_income": {"total": 0.0, "data": []},
+                "deposits_transfers": {"total": 0.0, "data": []}
             }
         }
+
+        write_to_file_t = account_id == "dd1cbaeb-788f-43fd-8967-40daa0212190"
         
         # Process spent transactions
         for transaction in simple_categorized.get("spent", {}).get("data", []):
@@ -1152,15 +1153,11 @@ class XeroCashFlowService:
                         amount_for_category = (line_amount / total_line_amounts) * transaction_total
                     else:
                         amount_for_category = transaction_total
-                
-                # Create a transaction entry for this line item
-                line_transaction = {
-                    "transaction_id": transaction["transaction_id"],
-                    "type": transaction["type"],
-                    "lineItems": [line_item],
-                    "category_name": category_info.get("name"),
-                    "category_type": category_info.get("type")
-                }
+
+
+                if write_to_file_t:
+                    with open("category_type.json", "a") as f:
+                        f.write(f"{transaction}\n")
 
                 # Categorize based on category name
                 if category_type == "interestexpense":
@@ -1207,22 +1204,17 @@ class XeroCashFlowService:
                     else:
                         amount_for_category = transaction_total
                 
-                # Create a transaction entry for this line item
-                line_transaction = {
-                    "transaction_id": transaction["transaction_id"],
-                    "type": transaction["type"],
-                    "lineItems": [line_item],
-                    "category_name": category_info.get("name"),
-                    "category_type": category_info.get("type")
-                }
-                
                 # Check if it's rental income
                 if category_type == "gst":
                     # subcategorized["received"]["gst_refund"]["data"].append(line_transaction)
                     subcategorized["received"]["gst_refund"]["total"] += amount_for_category
                 elif category_type == "rent":
+                    # print(f"[CASHFLOW] rental income: {transaction}")
                     # subcategorized["received"]["rental_income"]["data"].append(line_transaction)
                     subcategorized["received"]["rental_income"]["total"] += amount_for_category
+                elif category_type == "deposits / transfers":
+                    # print(f"[CASHFLOW] Deposits / Transfers income: {transaction}")
+                    subcategorized["received"]["deposits_transfers"]["total"] += amount_for_category
                 else:
                     # All other income goes to general income
                     # subcategorized["received"]["income"]["data"].append(line_transaction)
@@ -1296,9 +1288,19 @@ class XeroCashFlowService:
         
         return clean_line_items
 
-    async def generate_cashflow_report(self, report_date: str, period: int, period_of: str, connection_ids: str, is_cache: bool = True) -> Dict[str, Any]:
+    async def generate_cashflow_report(self, report_date: str, period: int, period_of: str, connection_ids: str, is_cache: bool = True, email: str = None) -> Dict[str, Any]:
         """
         Generate cashflow report
+        
+        Args:
+            report_date: Report date in YYYY-MM-DD format
+            period: Number of periods to go back
+            period_of: Type of period (Week, Month, Year)
+            connection_ids: Connection ID(s) - comma-separated for multiple connections
+            is_cache: Use cache (true) or not (false)
+            email: Email address to send the report to (optional)
+        Returns:
+            Dict containing report data and Excel file path
         """
 
         if report_date:

@@ -407,6 +407,7 @@ class XeroAgedReceivablesService:
         print("--------------------------------")
         print("[DEV DEBUG] Looping through unpaid invoices", tenant_id)
         print("--------------------------------")
+        
         for invoice in unpaid_invoices:
             if (is_future_date and invoice.type == "ACCREC" and 
                 invoice.amount_due > 0 and 
@@ -510,7 +511,7 @@ class XeroAgedReceivablesService:
                 should_include = False
                 is_negative = False
                 report_amount = 0
-                
+
                 # Scenario 1: Issue date in June, Payment in June, Due date in July - SHOULD NOT SHOW IN AR
                 if (issue_date and issue_date <= report_date and 
                     payment_date and payment_date <= report_date and 
@@ -536,7 +537,6 @@ class XeroAgedReceivablesService:
                 elif (issue_date and issue_date <= report_date and 
                       (not payment_date or payment_date > report_date) and 
                       due_date and due_date > report_date):
-
                     should_include = True
                     is_negative = False
                     credit_note_after_report = False
@@ -1026,7 +1026,8 @@ class XeroAgedReceivablesService:
         connection_id: str = None,
         is_response_only: int = 1,
         format: int = 1,
-        is_cache: bool = False
+        is_cache: bool = False,
+        email: str = None
     ) -> Dict[str, Any]:
         """
         Generate complete aged receivables report with Excel export
@@ -1042,6 +1043,7 @@ class XeroAgedReceivablesService:
             is_response_only: If 1, return response only without Excel generation
             format: If 1, return table format; if 0, return JSON format
             is_cache: Use cache (true) or not (false)
+            email: Email address to send the report to (optional)
         Returns:
             Dict containing report data and Excel file path
         """
@@ -1266,7 +1268,7 @@ class XeroAgedReceivablesService:
                             report=all_report_data,
                             amount_field="amount_due",
                             date_field="due_date",
-                            is_negative=getattr(invoice, 'is_negative', False),
+                            is_negative=invoice.get('is_negative', False),
                             date_fallback=report_date_obj,
                             connection_name=connection_data['tenant_name'],
                             business_type=business_type,

@@ -111,6 +111,7 @@ class ReportWorker:
             app_id = job_data.get("app_id")
             show_current = job_data.get("show_current", True)
             connection_id = job_data.get("connection_id")
+            email = job_data.get("email")
             
             print(f"[WORKER] Generating aged receivables report for {report_date}")
             
@@ -135,7 +136,7 @@ class ReportWorker:
                 
                 # Send completion webhook
                 await self.webhook_service.send_report_completion_webhook(
-                    job_id, "aged_receivables", excel_file_path, report_date
+                    job_id, "aged_receivables", excel_file_path, report_date, email
                 )
                 
                 # Mark job as complete
@@ -162,6 +163,7 @@ class ReportWorker:
             period = job_data.get("period", 2)
             period_of = job_data.get("period_of", "Week")
             connection_ids = job_data.get("connection_ids")
+            email = job_data.get("email")
             
             print(f"[WORKER] Generating cashflow report for {report_date}")
             
@@ -170,7 +172,8 @@ class ReportWorker:
                 report_date=report_date,
                 period=period,
                 period_of=period_of,
-                connection_ids=connection_ids
+                connection_ids=connection_ids,
+                email=email
             )
             
             # Get the Excel file path
@@ -181,7 +184,7 @@ class ReportWorker:
                 
                 # Send completion webhook
                 await self.webhook_service.send_report_completion_webhook(
-                    job_id, "cashflow", excel_file_path, report_date
+                    job_id, "cashflow", excel_file_path, report_date, email
                 )
                 
                 # Mark job as complete

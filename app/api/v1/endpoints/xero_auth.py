@@ -436,7 +436,8 @@ async def get_accounts_by_connection(
             XeroAccount.id,
             XeroAccount.account_code,
             XeroAccount.name,
-            XeroCategory.name.label('category_name')
+            XeroCategory.name.label('category_name'),
+            XeroCategory.type.label('category_type')
         ).join(
             XeroCategory, XeroAccount.category_id == XeroCategory.id
         ).filter(
@@ -450,7 +451,8 @@ async def get_accounts_by_connection(
                 "id": account.id,
                 "account_code": account.account_code,
                 "name": account.name,
-                "category_name": account.category_name
+                "category_name": account.category_name,
+                "category_type": account.category_type
             })
         
         return {
