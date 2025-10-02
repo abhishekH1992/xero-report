@@ -1,0 +1,3139 @@
+{
+  "name": "AR Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "https://finance-assistant-api.fly.dev/api/v1/reports/aged-receivables",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "connection_id",
+              "value": "={{ $json.connection_id }}"
+            },
+            {
+              "name": "report_date",
+              "value": "={{ $json.report_date }}"
+            },
+            {
+              "name": "periods",
+              "value": "={{ $json.periods }}"
+            },
+            {
+              "name": "=period_of",
+              "value": "={{ $json.period_of }}"
+            },
+            {
+              "name": "show_current",
+              "value": "={{ $json.show_current }}"
+            },
+            {
+              "name": "is_response_only",
+              "value": "={{ $json.is_response_only }}"
+            },
+            {
+              "name": "format",
+              "value": "1"
+            },
+            {
+              "name": "is_local",
+              "value": "true"
+            },
+            {
+              "name": "period_type",
+              "value": "={{ $json.period_type }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "mQTobC69fto8pHDD4JeCMttgBYElBfnCL9AG6u4FsPsnEogmQ8jNGVPAMD4156wGIMhNNQJ9Xqd5y2nBzpvf3JKfwZOccpEcE8d834XPULdRW5e8O4p4klQInK0kyCVa"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -520,
+        220
+      ],
+      "id": "c80afb34-14cb-4c40-bede-8e63bcd80eb0",
+      "name": "Data gathering API"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8e316221-8d76-4b22-bb5c-3bae90b33bda",
+              "name": "arr",
+              "value": "={{ $json.data }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -260,
+        220
+      ],
+      "id": "75029f75-ccb7-4c05-9d32-c8db1295e2bf",
+      "name": "Data array"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-5-mini"
+        },
+        "options": {
+          "maxTokens": -1,
+          "temperature": 1,
+          "topP": 1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        420,
+        400
+      ],
+      "id": "99a5b051-6f5d-43e3-8c55-b3932d49d249",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "V2TMBzPNwXxLGURh",
+          "name": "OpenAi account 7"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"$id\": \"https://example.com/data-filter-plan.schema.json\",\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"title\": \"DataFilterPlan\",\n  \"description\": \"A structured plan for filtering, grouping, aggregating, sorting, and limiting tabular data.\",\n  \"strict\": true,\n  \"type\": \"object\",\n  \"properties\": {\n    \"filters\": {\n      \"type\": \"array\",\n      \"description\": \"Optional filter conditions to apply before grouping or aggregating.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"column\": {\n            \"type\": \"string\",\n            \"description\": \"The column to apply the filter to.\"\n          },\n          \"operator\": {\n            \"type\": \"string\",\n            \"enum\": [\"==\", \"!=\", \">\", \"<\", \">=\", \"<=\", \"in\", \"not in\"],\n            \"description\": \"The comparison operator to apply.\"\n          },\n          \"value\": {\n            \"description\": \"The value to compare against. Can be a string, number, or list depending on the operator.\",\n            \"oneOf\": [\n              { \"type\": \"string\" },\n              { \"type\": \"number\" },\n              {\n                \"type\": \"array\",\n                \"items\": { \"type\": \"string\" }\n              }\n            ]\n          }\n        },\n        \"required\": [\"column\", \"operator\", \"value\"]\n      }\n    },\n\n    \"row_aggregations\": {\n      \"type\": \"array\",\n      \"description\": \"List of row-wise (axis=1) aggregations, computed across multiple columns in each row.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"column\": {\n            \"type\": \"array\",\n            \"items\": { \"type\": \"string\" },\n            \"description\": \"List of columns to aggregate across in the row.\"\n          },\n          \"operation\": {\n            \"type\": \"string\",\n            \"enum\": [\"sum\", \"avg\", \"min\", \"max\"],\n            \"description\": \"Aggregation function to apply across the row.\"\n          },\n          \"alias\": {\n            \"type\": \"string\",\n            \"description\": \"Name of the resulting column.\"\n          }\n        },\n        \"required\": [\"column\", \"operation\", \"alias\"]\n      }\n    },\n    \n    \"vertical_aggregations\": {\n      \"type\": \"array\",\n      \"description\": \"List of vertical (axis=0) aggregations. Each can optionally specify group_by columns.\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"column\": {\n            \"type\": \"string\",\n            \"description\": \"The column to aggregate.\"\n          },\n          \"operation\": {\n            \"type\": \"string\",\n            \"enum\": [\"sum\", \"mean\", \"count\", \"min\", \"max\", \"median\"],\n            \"description\": \"Aggregation function to apply.\"\n          },\n          \"alias\": {\n            \"type\": \"string\",\n            \"description\": \"Name of the resulting column.\"\n          },\n          \"group_by\": {\n            \"type\": \"array\",\n            \"items\": { \"type\": \"string\" },\n            \"description\": \"Optional group-by columns for this aggregation.\"\n          }\n        },\n        \"required\": [\"column\", \"operation\", \"alias\"]\n      }\n    },\n\n    \"aggregation_order\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"string\",\n        \"enum\": [\"vertical\", \"row\"]\n      },\n      \"description\": \"Order of aggregation: 'vertical' or 'row'. Default is ['row', 'vertical'] if not provided.\"\n    },\n\n    \"sort\": {\n      \"type\": \"object\",\n      \"description\": \"Optional sorting instructions after aggregation.\",\n      \"properties\": {\n        \"by\": {\n          \"type\": \"string\",\n          \"description\": \"The column to sort by, typically an aggregation result.\"\n        },\n        \"order\": {\n          \"type\": \"string\",\n          \"enum\": [\"asc\", \"desc\"],\n          \"description\": \"The sort order.\"\n        }\n      },\n      \"required\": [\"by\", \"order\"]\n    }\n  },\n  \"required\": [\"filters\", \"group_by\", \"aggregations\", \"sort\", \"limit\"],\n  \"additionalProperties\": false\n}\n"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        600,
+        400
+      ],
+      "id": "bdf38300-5c92-4f43-8d17-addfb7757611",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are a financial data analysis assistant.\n\nYou will receive:\n\nA user query related to aged receivables.\n\nA tabular dataset (as a filtered result) that represents relevant records based on that query.\n\nYour task is to:\n\nInterpret the user’s intent based on the query.\n\nAnalyze the provided table in the context of that intent.\n\nGenerate a concise, accurate, and relevant final result or summary that directly addresses the user’s request.\n\nGuidelines:\n\nUnless the user explicitly says \"contact(s)\" or \"customer(s)\", treat all entity names provided in the user query as company names by default.\n\nIf the user’s question contains phrases like \"for companies ...\" or \"contacts belonging to companies ...\", then those names must be matched against the Company column only.\n\nDo not repeat or re-describe the table; instead, extract insights from it.\n\nHighlight patterns, summaries, metrics, exceptions, or flags relevant to the query.\n\nIf the table is empty or insufficient to fulfill the query, state that clearly and suggest what might be missing.\n\nUse clear, structured, and domain-appropriate language.\n\nThe output should be factual and actionable, strictly follow the given user query and table, and tailored specifically to the question asked.\n\nDo not include introductory phrases like \"Based on the table...\" — respond as if you're answering the user directly.\n\nFormat the final result as a short narrative, list, or decision-ready note — whatever is most suitable for the query.\n\nStrictly following the numerical data in the given table from user query. For numbers, only output the numbers in the table, do not hallucinate any numbers.",
+              "role": "system"
+            },
+            {
+              "content": "=User query: {{ $('Get user query').first().json.user_query }}\n\nThe filtered data for the query, and you should strictly following the numbers in the data only and must not do any aggregations such as sum. Report date is \n{{ JSON.stringify($(\"Filter based on filtering plan\").first().json) }}\n\nAging summary is:\n{{ JSON.stringify($('Data gathering API').first().json.summary) }}"
+            }
+          ]
+        },
+        "simplify": false,
+        "options": {
+          "temperature": 1,
+          "topP": 1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 1.8,
+      "position": [
+        1460,
+        80
+      ],
+      "id": "9244bc98-2ab5-44f7-8d03-2afe9b9b587a",
+      "name": "OpenAI1",
+      "credentials": {
+        "openAiApi": {
+          "id": "V2TMBzPNwXxLGURh",
+          "name": "OpenAi account 7"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "74f8f883-3e6f-41db-851c-c793313a0aa2",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1000,
+        220
+      ],
+      "id": "54208c94-199d-4185-acc0-232553a662e4",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "aaa26132-52ee-4cbc-9df7-7cf3fe99ff33",
+              "leftValue": "={{ $json.false_counter }}",
+              "rightValue": 3,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1480,
+        320
+      ],
+      "id": "655ccd0e-3c3f-40fd-b56c-fe3c6cf96e95",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "content": "## Need to add an intent detection to see if need to download report and store in sharepoint. Maybe intent detection in dify and do report downloading in n8n",
+        "height": 460,
+        "width": 460
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -740,
+        40
+      ],
+      "id": "c9733d3b-0660-45be-930f-25dff04e1360",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "from copy import deepcopy\n\ndef _build_schema_map(schema_columns):\n    \"\"\"\n    建立 {lower_name: original_name} 映射。\n    如存在仅大小写不同的重复列，会抛错以避免歧义。\n    \"\"\"\n    mapping = {}\n    for col in schema_columns:\n        key = col.lower()\n        if key in mapping and mapping[key] != col:\n            raise ValueError(f\"Schema contains conflicting columns by case: {mapping[key]} vs {col}\")\n        mapping[key] = col\n    return mapping\n\ndef _remap_col(col, schema_map, alias_set):\n    \"\"\"\n    若是别名，保持原样；若在 schema_map 中（大小写不敏感），返回原始大小写；否则返回原值。\n    \"\"\"\n    if col in alias_set:\n        return col\n    return schema_map.get(col.lower(), col)\n\ndef _collect_declared_aliases(plan):\n    declared = set()\n    for a in plan.get(\"vertical_aggregations\", []):\n        if \"alias\" in a:\n            declared.add(a[\"alias\"])\n    for r in plan.get(\"row_aggregations\", []):\n        if \"alias\" in r:\n            declared.add(r[\"alias\"])\n    return declared\n\ndef validate_plan(plan, schema_columns):\n    schema_map = _build_schema_map(schema_columns)              # {lower: original}\n    declared_aliases = _collect_declared_aliases(plan)\n\n    used_columns = []\n\n    # Extract used columns\n    for f in plan.get(\"filters\", []):\n        used_columns.append(f[\"column\"])\n\n    for a in plan.get(\"vertical_aggregations\", []):\n        used_columns.append(a[\"column\"])\n        used_columns += a.get(\"group_by\", [])\n\n    for r in plan.get(\"row_aggregations\", []):\n        # 按你的注释，这是类别标签而非 schema 字段；如果确实需要验证可改为 extend\n        used_columns.extend(r[\"column\"])\n\n    if \"sort\" in plan:\n        used_columns.append(plan[\"sort\"][\"by\"])\n\n    # 计算无效列（考虑别名及大小写不敏感的 schema 匹配）\n    invalid = []\n    for col in used_columns:\n        if (col in declared_aliases) or (col.lower() in schema_map):\n            continue\n        invalid.append(col)\n\n    if invalid:\n        return {\"valid\": False, \"hallucinated_columns\": invalid}\n\n    # 生成大小写修正后的 plan（把命中的列替换回 schema 的原始大小写）\n    fixed = deepcopy(plan)\n\n    # filters\n    for f in fixed.get(\"filters\", []):\n        f[\"column\"] = _remap_col(f[\"column\"], schema_map, declared_aliases)\n\n    # vertical_aggregations\n    for a in fixed.get(\"vertical_aggregations\", []):\n        a[\"column\"] = _remap_col(a[\"column\"], schema_map, declared_aliases)\n        if \"group_by\" in a and isinstance(a[\"group_by\"], list):\n            a[\"group_by\"] = [\n                _remap_col(g, schema_map, declared_aliases) for g in a[\"group_by\"]\n            ]\n\n    # row_aggregations: 你的注释说这些是类别标签，不是 schema 字段，这里不做映射\n    # 如果你希望它们也参与映射，把下面注释放开：\n    for r in fixed.get(\"row_aggregations\", []):\n        if \"column\" in r and isinstance(r[\"column\"], list):\n            r[\"column\"] = [\n                _remap_col(c, schema_map, declared_aliases) for c in r[\"column\"]\n            ]\n\n    # sort\n    if \"sort\" in fixed and \"by\" in fixed[\"sort\"]:\n        fixed[\"sort\"][\"by\"] = _remap_col(fixed[\"sort\"][\"by\"], schema_map, declared_aliases)\n\n    return {\"valid\": True, \"outcome\": fixed}\n\n\n# ===== 调用部分保持原样 =====\narr = _('Get AR Schema').first()['json']['schema'].to_py()\narr_columns = [dic['column'] for dic in arr]\n\nplan = _input.first()['json']['output'].to_py()\ndic = validate_plan(plan, arr_columns)\nreturn dic"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        220
+      ],
+      "id": "17a02720-4132-480e-88b9-fddaa56f78eb",
+      "name": "Validate Filtering Plan"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "845e0bd1-a43e-42c4-9de8-6a87e67d845c",
+              "name": "user_input",
+              "value": "=There was an issue with the generated query plan.\n\n- The user query: {{ $('Get user query').first().json.user_query }}\n- Invalid column(s) used: {{ $('Validate Filtering Plan').first().json.hallucinated_columns }}\n- Available columns in the schema: {{ JSON.stringify($('Get AR Schema').first().json.schema) }}\n",
+              "type": "string"
+            },
+            {
+              "id": "1cc7920b-f30c-46e5-9bd4-c6726fb5947f",
+              "name": "={{ $('Set user input').item.json.false_counter }}",
+              "value": "={{ $('Set user input').item.json.false_counter +1}}",
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1260,
+        320
+      ],
+      "id": "92d013ee-a222-4b22-be51-41f368b74a1c",
+      "name": "Set user input for schema issue"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "import pandas as pd\n\ndef apply_row_aggregations(df: pd.DataFrame, plan: dict) -> pd.DataFrame:\n    for agg in plan.get(\"row_aggregations\", []):\n        cols = agg[\"column\"]\n        op = agg[\"operation\"]\n        alias = agg[\"alias\"]\n        if op == \"sum\":\n            df[alias] = df[cols].sum(axis=1)\n        elif op == \"avg\":\n            df[alias] = df[cols].mean(axis=1)\n        elif op == \"min\":\n            df[alias] = df[cols].min(axis=1)\n        elif op == \"max\":\n            df[alias] = df[cols].max(axis=1)\n        else:\n            raise ValueError(f\"Unsupported row-wise operation: {op}\")\n    return df\n\ndef apply_vertical_aggregations(df: pd.DataFrame, plan: dict) -> pd.DataFrame:\n    all_vert_results = []\n    for agg in plan.get(\"vertical_aggregations\", []):\n        col = agg[\"column\"]\n        op = agg[\"operation\"]\n        alias = agg[\"alias\"]\n        group_by = agg.get(\"group_by\")\n\n        if group_by:\n            grouped = df.groupby(group_by, as_index=False)\n            agg_df = grouped.agg({col: op}).rename(columns={col: alias})\n        else:\n            agg_val = getattr(df[col], op)()\n            agg_df = pd.DataFrame([{alias: agg_val}])\n        all_vert_results.append(agg_df)\n\n    if all_vert_results:\n        from functools import reduce\n        def merge_fn(left, right):\n            common = list(set(left.columns) & set(right.columns))\n            if common:\n                return pd.merge(left, right, on=common)\n            else:\n                return pd.concat([left, right], axis=1)\n        return reduce(merge_fn, all_vert_results)\n    else:\n        return df\n\ndef apply_filter_group_aggregate(df: pd.DataFrame, plan: dict) -> pd.DataFrame:\n    df = df.copy()\n\n    # 1. Apply filters\n    for f in plan.get(\"filters\", []):\n        col, op, val = f[\"column\"], f[\"operator\"], f[\"value\"]\n        if op == \"==\":\n            df = df[df[col] == val]\n        elif op == \"!=\":\n            df = df[df[col] != val]\n        elif op == \">\":\n            df = df[df[col] > val]\n        elif op == \"<\":\n            df = df[df[col] < val]\n        elif op == \">=\":\n            df = df[df[col] >= val]\n        elif op == \"<=\":\n            df = df[df[col] <= val]\n        elif op == \"in\":\n            df = df[df[col].isin(val)]\n        elif op == \"not in\":\n            df = df[~df[col].isin(val)]\n\n    result = df\n\n    # Determine aggregation order\n    agg_order = plan.get(\"aggregation_order\", [\"row\", \"vertical\"])\n\n    result = df\n\n    for step in agg_order:\n        if step == \"row\":\n            result = apply_row_aggregations(result, plan)\n        elif step == \"vertical\":\n            result = apply_vertical_aggregations(result, plan)\n        else:\n            raise ValueError(f\"Unknown aggregation step: {step}\")\n\n    # 4. Apply sorting\n    sort_plan = plan.get(\"sort\")\n    if sort_plan:\n        by = sort_plan[\"by\"]\n        ascending = sort_plan.get(\"order\", \"asc\") == \"asc\"\n        result = result.sort_values(by=by, ascending=ascending)\n\n    # 5. Apply limit\n    limit = plan.get(\"limit\")\n    if isinstance(limit, int) and limit > 0:\n        result = result.head(limit)\n\n    return result\n\n  \narr = _('Data array').first()['json']['arr'].to_py()\ndf = pd.DataFrame(arr)\nfilter_plan = _input.first()['json']['outcome'].to_py()\n\nresult = apply_filter_group_aggregate(df, filter_plan)\noutput = result.to_dict(orient='records')\n\n\nreturn [\n        {\n        \"json\": {\n          \"table\": output\n        }\n        }\n      ];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        80
+      ],
+      "id": "15e24fe3-e07c-4963-b75c-ad35fa385a5c",
+      "name": "Filter based on filtering plan"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "74ba7704-8e4f-4d0e-8625-5a7b5a3978ef",
+              "name": "output",
+              "value": "={{ $json.choices[0].message.content }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1940,
+        80
+      ],
+      "id": "097fbf7b-dc8b-47d5-a62c-ec7d4e50e528",
+      "name": "Retrieve response"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "73986381-f422-465f-979f-e1effa85b785",
+              "name": "user_input",
+              "value": "=### User query:\n{{ $('Get user query').first().json.user_query }}",
+              "type": "string"
+            },
+            {
+              "id": "aef5b4e5-6251-485c-95ea-ca63e86453af",
+              "name": "false_counter",
+              "value": 0,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        180,
+        220
+      ],
+      "id": "567270b4-4e31-496b-bb7a-062069ef0056",
+      "name": "Set user input"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.user_input }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=You are a structured query planner for aged receivables analysis.\n\nYour role is to translate natural language questions regarding age receivables into a **structured filter plan** for execution on tabular data conforming to a known schema. You must strictly follow the provided rules. You must never guess or create columns, companies, or values that are not explicitly in the schema.\n\nThe filter plan must include the following components:\n\n 1. filters — Pre-aggregation filters\n    A list of conditional expressions applied before grouping or aggregation.\n    \n      - Type: array of filter objects\n\n      - Each filter includes:\n    \n        - column: string – a valid column name\n      \n        - operator: one of ==, !=, >, <, >=, <=, in, not in\n      \n        - value: a string, number, or list of strings\n\n  **Rules:**\n  - **Do not** add a company filter by default — the input table already contains data for the companies specified in user query.\n  - Only add filters for other specified conditions (e.g., `business_unit`, `contact`, date ranges, specific overdue buckets).\n\n\n 2. vertical_aggregations — Group-wise aggregations (axis = 0)\n    Used to compute metrics over a single column, optionally grouped by one or more dimensions. Each aggregation object includes:\n    \n        - column: string – the field to aggregate\n        \n        - operation: \"sum\", \"mean\", \"count\", \"min\", \"max\", \"median\"\n        \n        - alias: string – name of the resulting output column\n        \n        - group_by: (optional) array of column\n\n  **Rules for customer ranking:**\n  - Map “customer(s)”, “client(s)”, “tenant(s)” → `contact`\n  - When ranking customers, group by `Company` and `Contact`\n\n 3. row_aggregations — Row-wise aggregations (axis = 1)\n    Used to aggregate across multiple columns within a single row (e.g., total outstanding balance across aging buckets). Each aggregation object includes:\n    \n      - column: array of strings – fields to aggregate across\n      \n      - operation: \"sum\", \"avg\", \"min\", \"max\"\n      \n      - alias: string – output column name\n\n\n\n 4. sort — Sorting instructions\n    Defines how to order the result after aggregation.\n\n      - Type: object\n      \n      - Fields:\n      \n        - by: string – a column name or aggregation alias\n        \n        - order: \"asc\" or \"desc\"\n\n\n---\n\n### Row vs Vertical Aggregations\n - Vertical (axis=0): For metrics over one column (possibly grouped), e.g., “sum of Older” or “total in 31-60 by company”.\n\n - Row (axis=1): Only when the query explicitly requests a total across multiple named buckets in the same row.\n\n---\n\n### Field reference for key columns:\n- `business_unit`: The internal division managing the receivable (e.g., \"Commercial Property\")\n- `company`: The legal entity within the group that issued the invoice (e.g., \"Urban Hub Limited\")\n- `contact`: The client responsible for payment (e.g., \"Agilyx NZ Limited\")\n\nTime-based columns (represent aging buckets):\n\nThese are schema-defined fields representing the overdue period of unpaid invoices. Their labels do not reflect fixed durations and should not be interpreted as exact calendar dates.\n\n---\n\n### Definitive meaning of “break down aged receivables by aging bucket”\n\nMeaning: Produce per-bucket totals of aged receivables using the corresponding aging-bucket columns from the schema (e.g., sum of 0–30 days, sum of 31–60 days, …). Optionally group by dimensions explicitly implied by the question (most commonly company).\n\n\n---\n\n### Important Constraints\n✅ All fields referenced must come from the schema.\n🚫 Do NOT hallucinate column names. Some column names are case sensitive — strictly use column names exactly as they appear in the provided schema.\n✅ All required fields must be present, even if empty (e.g., filters: []).\n✅ Plan must validate against the DataFilterPlan schema.\n\n---\n\n### Companies in the table\n\n{{ $('Get user query').first().json.companies }}\n\n---\n\n### Provided table columns\n\n{{ JSON.stringify($('Get AR Schema').first().json.schema) }}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        420,
+        220
+      ],
+      "id": "89aef542-bf7f-4d99-98bd-176979eaa2ca",
+      "name": "AI Agent for filtering plan"
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "import pandas as pd\nitems = _input.all()\narr = _input.first()['json']['arr']\ndf = pd.DataFrame(arr)\n# output = df.to_dict(orient='records')\n# return [{'json': row} for row in output]\ndf = df.convert_dtypes()\nschema = [{\"column\": col, \"dtype\": str(dtype)} for col, dtype in zip(df.columns, df.dtypes)]\nreturn [{\"json\": {\"schema\": schema}}]"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        220
+      ],
+      "id": "04e623fe-c1f6-49b4-8161-1dfa16c6d46e",
+      "name": "Get AR Schema"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ $json.query }}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -760,
+        220
+      ],
+      "id": "89a2d044-7e26-4d87-83a6-b6710ba57f36",
+      "name": "Get user query"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "age_receivable_abhi",
+        "responseMode": "lastNode",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1000,
+        220
+      ],
+      "id": "8087ce52-5168-41dd-a35c-3e1aece1fdd5",
+      "name": "Webhook1",
+      "webhookId": "a8a98822-12fa-485d-8f36-94485576d96c"
+    }
+  ],
+  "pinData": {
+    "Data gathering API": [
+      {
+        "json": {
+          "format": "table",
+          "data": [
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "322 K RD Limited",
+              "Contact": "Room 1, Nipun Goyal",
+              "Current": 0,
+              "< 1 Day": 730,
+              "1 Day": 0,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 0,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 0,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 0,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 0,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 0,
+              "Total": 730,
+              "Invoice Breakdown": "< 1 Day:\nINV-0865 = 500.00\nINV-0852 = 230.00\n"
+            },
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "322 K RD Limited",
+              "Contact": "Room 3, Leilani Crystal Tekare",
+              "Current": 0,
+              "< 1 Day": 290,
+              "1 Day": 0,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 290,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 0,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 0,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 0,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 0,
+              "Total": 580,
+              "Invoice Breakdown": "< 1 Day:\nINV-0855 = 290.00\n\n6 Days:\nINV-0848 = 290.00\n"
+            },
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "322 K RD Limited",
+              "Contact": "Cole Taylor",
+              "Current": 0,
+              "< 1 Day": 0,
+              "1 Day": 320,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 0,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 0,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 0,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 0,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 0,
+              "Total": 320,
+              "Invoice Breakdown": "1 Day:\nINV-0851 = 320.00\n"
+            },
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "322 K RD Limited",
+              "Contact": "It's Java Limited",
+              "Current": 0,
+              "< 1 Day": 0,
+              "1 Day": 0,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 0,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 5577.32,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 0,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 0,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 0,
+              "Total": 5577.32,
+              "Invoice Breakdown": "11 Days:\nINV-0838 = 5,577.32\n"
+            },
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "322 K RD Limited",
+              "Contact": "Khaing Nyein Nyein Swe",
+              "Current": -310,
+              "< 1 Day": 0,
+              "1 Day": 0,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 0,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 0,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 0,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 0,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 0,
+              "Total": -310,
+              "Invoice Breakdown": "Current:\nINV-0837 (Credit/Overpayment) = -310.00\n"
+            },
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "89 Courtenay Place Limited",
+              "Contact": "Kebabs On Queen",
+              "Current": 0,
+              "< 1 Day": 0,
+              "1 Day": 0,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 0,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 9711.9,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 9711.9,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 9711.9,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 66294.7,
+              "Total": 95430.4,
+              "Invoice Breakdown": "11 Days:\nINV-0147 = 9,711.90\n\n42 Days:\nINV-0135 = 9,711.90\n\n72 Days:\nINV-0121 = 9,711.90\n\nOlder:\nINV-0109 = 9,711.90\nINV-0093 = 9,711.90\nINV-0081 = 9,711.90\nINV-0060 = 8,586.12\n9874389 = 9,222.01\n050143 = 10,149.67\n042916 = 9,201.20\n"
+            },
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "89 Courtenay Place Limited",
+              "Contact": "Esther NZ Limited",
+              "Current": 0,
+              "< 1 Day": 0,
+              "1 Day": 0,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 0,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 8400.95,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 8400.95,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 23.37,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 1447.69,
+              "Total": 18272.96,
+              "Invoice Breakdown": "11 Days:\nINV-0143 = 23.37\nINV-0149 = 8,377.58\n\n42 Days:\nINV-0137 = 8,377.58\nINV-0134 = 23.37\n\n72 Days:\nINV-0119 = 23.37\n\nOlder:\nINV-0111 = 1,447.69\n"
+            }
+          ],
+          "columns": [
+            "Business Unit",
+            "Company",
+            "Contact",
+            "Current",
+            "< 1 Day",
+            "1 Day",
+            "2 Days",
+            "3 Days",
+            "4 Days",
+            "5 Days",
+            "6 Days",
+            "7 Days",
+            "8 Days",
+            "9 Days",
+            "10 Days",
+            "11 Days",
+            "12 Days",
+            "13 Days",
+            "14 Days",
+            "15 Days",
+            "16 Days",
+            "17 Days",
+            "18 Days",
+            "19 Days",
+            "20 Days",
+            "21 Days",
+            "22 Days",
+            "23 Days",
+            "24 Days",
+            "25 Days",
+            "26 Days",
+            "27 Days",
+            "28 Days",
+            "29 Days",
+            "30 Days",
+            "31 Days",
+            "32 Days",
+            "33 Days",
+            "34 Days",
+            "35 Days",
+            "36 Days",
+            "37 Days",
+            "38 Days",
+            "39 Days",
+            "40 Days",
+            "41 Days",
+            "42 Days",
+            "43 Days",
+            "44 Days",
+            "45 Days",
+            "46 Days",
+            "47 Days",
+            "48 Days",
+            "49 Days",
+            "50 Days",
+            "51 Days",
+            "52 Days",
+            "53 Days",
+            "54 Days",
+            "55 Days",
+            "56 Days",
+            "57 Days",
+            "58 Days",
+            "59 Days",
+            "60 Days",
+            "61 Days",
+            "62 Days",
+            "63 Days",
+            "64 Days",
+            "65 Days",
+            "66 Days",
+            "67 Days",
+            "68 Days",
+            "69 Days",
+            "70 Days",
+            "71 Days",
+            "72 Days",
+            "73 Days",
+            "74 Days",
+            "75 Days",
+            "76 Days",
+            "77 Days",
+            "78 Days",
+            "79 Days",
+            "80 Days",
+            "81 Days",
+            "82 Days",
+            "83 Days",
+            "84 Days",
+            "85 Days",
+            "86 Days",
+            "87 Days",
+            "88 Days",
+            "89 Days",
+            "90 Days",
+            "Older",
+            "Total",
+            "Invoice Breakdown"
+          ],
+          "shape": [
+            7,
+            98
+          ],
+          "generated_at": "2025-08-13",
+          "report_date": "13 August 2025",
+          "total_invoices": 23,
+          "summary": {
+            "total_outstanding": 120600.68,
+            "companies_count": 2,
+            "contacts_count": 7,
+            "highest_aging_bucket": "Older",
+            "highest_aging_amount": 67742.39,
+            "aging_distribution": {
+              "Current": {
+                "amount": -310,
+                "percentage": -0.3
+              },
+              "< 1 Day": {
+                "amount": 1020,
+                "percentage": 0.8
+              },
+              "1 Day": {
+                "amount": 320,
+                "percentage": 0.3
+              },
+              "2 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "3 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "4 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "5 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "6 Days": {
+                "amount": 290,
+                "percentage": 0.2
+              },
+              "7 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "8 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "9 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "10 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "11 Days": {
+                "amount": 23690.17,
+                "percentage": 19.6
+              },
+              "12 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "13 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "14 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "15 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "16 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "17 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "18 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "19 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "20 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "21 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "22 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "23 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "24 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "25 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "26 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "27 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "28 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "29 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "30 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "31 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "32 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "33 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "34 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "35 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "36 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "37 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "38 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "39 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "40 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "41 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "42 Days": {
+                "amount": 18112.85,
+                "percentage": 15
+              },
+              "43 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "44 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "45 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "46 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "47 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "48 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "49 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "50 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "51 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "52 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "53 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "54 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "55 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "56 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "57 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "58 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "59 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "60 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "61 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "62 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "63 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "64 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "65 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "66 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "67 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "68 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "69 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "70 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "71 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "72 Days": {
+                "amount": 9735.27,
+                "percentage": 8.1
+              },
+              "73 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "74 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "75 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "76 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "77 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "78 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "79 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "80 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "81 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "82 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "83 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "84 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "85 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "86 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "87 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "88 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "89 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "90 Days": {
+                "amount": 0,
+                "percentage": 0
+              },
+              "Older": {
+                "amount": 67742.39,
+                "percentage": 56.2
+              }
+            }
+          }
+        }
+      }
+    ],
+    "Data array": [
+      {
+        "json": {
+          "arr": [
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "322 K RD Limited",
+              "Contact": "Room 1, Nipun Goyal",
+              "Current": 0,
+              "< 1 Day": 730,
+              "1 Day": 0,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 0,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 0,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 0,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 0,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 0,
+              "Total": 730,
+              "Invoice Breakdown": "< 1 Day:\nINV-0865 = 500.00\nINV-0852 = 230.00\n"
+            },
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "322 K RD Limited",
+              "Contact": "Room 3, Leilani Crystal Tekare",
+              "Current": 0,
+              "< 1 Day": 290,
+              "1 Day": 0,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 290,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 0,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 0,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 0,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 0,
+              "Total": 580,
+              "Invoice Breakdown": "< 1 Day:\nINV-0855 = 290.00\n\n6 Days:\nINV-0848 = 290.00\n"
+            },
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "322 K RD Limited",
+              "Contact": "Cole Taylor",
+              "Current": 0,
+              "< 1 Day": 0,
+              "1 Day": 320,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 0,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 0,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 0,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 0,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 0,
+              "Total": 320,
+              "Invoice Breakdown": "1 Day:\nINV-0851 = 320.00\n"
+            },
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "322 K RD Limited",
+              "Contact": "It's Java Limited",
+              "Current": 0,
+              "< 1 Day": 0,
+              "1 Day": 0,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 0,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 5577.32,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 0,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 0,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 0,
+              "Total": 5577.32,
+              "Invoice Breakdown": "11 Days:\nINV-0838 = 5,577.32\n"
+            },
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "322 K RD Limited",
+              "Contact": "Khaing Nyein Nyein Swe",
+              "Current": -310,
+              "< 1 Day": 0,
+              "1 Day": 0,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 0,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 0,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 0,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 0,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 0,
+              "Total": -310,
+              "Invoice Breakdown": "Current:\nINV-0837 (Credit/Overpayment) = -310.00\n"
+            },
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "89 Courtenay Place Limited",
+              "Contact": "Kebabs On Queen",
+              "Current": 0,
+              "< 1 Day": 0,
+              "1 Day": 0,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 0,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 9711.9,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 9711.9,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 9711.9,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 66294.7,
+              "Total": 95430.4,
+              "Invoice Breakdown": "11 Days:\nINV-0147 = 9,711.90\n\n42 Days:\nINV-0135 = 9,711.90\n\n72 Days:\nINV-0121 = 9,711.90\n\nOlder:\nINV-0109 = 9,711.90\nINV-0093 = 9,711.90\nINV-0081 = 9,711.90\nINV-0060 = 8,586.12\n9874389 = 9,222.01\n050143 = 10,149.67\n042916 = 9,201.20\n"
+            },
+            {
+              "Business Unit": "Commercial Property",
+              "Company": "89 Courtenay Place Limited",
+              "Contact": "Esther NZ Limited",
+              "Current": 0,
+              "< 1 Day": 0,
+              "1 Day": 0,
+              "2 Days": 0,
+              "3 Days": 0,
+              "4 Days": 0,
+              "5 Days": 0,
+              "6 Days": 0,
+              "7 Days": 0,
+              "8 Days": 0,
+              "9 Days": 0,
+              "10 Days": 0,
+              "11 Days": 8400.95,
+              "12 Days": 0,
+              "13 Days": 0,
+              "14 Days": 0,
+              "15 Days": 0,
+              "16 Days": 0,
+              "17 Days": 0,
+              "18 Days": 0,
+              "19 Days": 0,
+              "20 Days": 0,
+              "21 Days": 0,
+              "22 Days": 0,
+              "23 Days": 0,
+              "24 Days": 0,
+              "25 Days": 0,
+              "26 Days": 0,
+              "27 Days": 0,
+              "28 Days": 0,
+              "29 Days": 0,
+              "30 Days": 0,
+              "31 Days": 0,
+              "32 Days": 0,
+              "33 Days": 0,
+              "34 Days": 0,
+              "35 Days": 0,
+              "36 Days": 0,
+              "37 Days": 0,
+              "38 Days": 0,
+              "39 Days": 0,
+              "40 Days": 0,
+              "41 Days": 0,
+              "42 Days": 8400.95,
+              "43 Days": 0,
+              "44 Days": 0,
+              "45 Days": 0,
+              "46 Days": 0,
+              "47 Days": 0,
+              "48 Days": 0,
+              "49 Days": 0,
+              "50 Days": 0,
+              "51 Days": 0,
+              "52 Days": 0,
+              "53 Days": 0,
+              "54 Days": 0,
+              "55 Days": 0,
+              "56 Days": 0,
+              "57 Days": 0,
+              "58 Days": 0,
+              "59 Days": 0,
+              "60 Days": 0,
+              "61 Days": 0,
+              "62 Days": 0,
+              "63 Days": 0,
+              "64 Days": 0,
+              "65 Days": 0,
+              "66 Days": 0,
+              "67 Days": 0,
+              "68 Days": 0,
+              "69 Days": 0,
+              "70 Days": 0,
+              "71 Days": 0,
+              "72 Days": 23.37,
+              "73 Days": 0,
+              "74 Days": 0,
+              "75 Days": 0,
+              "76 Days": 0,
+              "77 Days": 0,
+              "78 Days": 0,
+              "79 Days": 0,
+              "80 Days": 0,
+              "81 Days": 0,
+              "82 Days": 0,
+              "83 Days": 0,
+              "84 Days": 0,
+              "85 Days": 0,
+              "86 Days": 0,
+              "87 Days": 0,
+              "88 Days": 0,
+              "89 Days": 0,
+              "90 Days": 0,
+              "Older": 1447.69,
+              "Total": 18272.96,
+              "Invoice Breakdown": "11 Days:\nINV-0143 = 23.37\nINV-0149 = 8,377.58\n\n42 Days:\nINV-0137 = 8,377.58\nINV-0134 = 23.37\n\n72 Days:\nINV-0119 = 23.37\n\nOlder:\nINV-0111 = 1,447.69\n"
+            }
+          ]
+        }
+      }
+    ],
+    "Set user input": [
+      {
+        "json": {
+          "user_input": "### User query:\nCan you break down aged receivables by aging bucket (0–30, 31–60, 61–90, >90 days) for 16 Park Avenue, 322 K RD Limited, 89 Courtenay Place Limited and Hilton Project Management Limited?  \n---\n\n### Companies in the table\n\n16 Park Avenue Limited,322 K RD Limited,89 Courtenay Place Limited,Hilton Project Management Limited\n\n---\n\n### Provided table columns\n\n[{\"column\":\"1 Day\",\"dtype\":\"Int64\"},{\"column\":\"10 Days\",\"dtype\":\"Int64\"},{\"column\":\"11 Days\",\"dtype\":\"Float64\"},{\"column\":\"12 Days\",\"dtype\":\"Int64\"},{\"column\":\"13 Days\",\"dtype\":\"Int64\"},{\"column\":\"14 Days\",\"dtype\":\"Int64\"},{\"column\":\"15 Days\",\"dtype\":\"Int64\"},{\"column\":\"16 Days\",\"dtype\":\"Int64\"},{\"column\":\"17 Days\",\"dtype\":\"Int64\"},{\"column\":\"18 Days\",\"dtype\":\"Int64\"},{\"column\":\"19 Days\",\"dtype\":\"Int64\"},{\"column\":\"2 Days\",\"dtype\":\"Int64\"},{\"column\":\"20 Days\",\"dtype\":\"Int64\"},{\"column\":\"21 Days\",\"dtype\":\"Int64\"},{\"column\":\"22 Days\",\"dtype\":\"Int64\"},{\"column\":\"23 Days\",\"dtype\":\"Int64\"},{\"column\":\"24 Days\",\"dtype\":\"Int64\"},{\"column\":\"25 Days\",\"dtype\":\"Int64\"},{\"column\":\"26 Days\",\"dtype\":\"Int64\"},{\"column\":\"27 Days\",\"dtype\":\"Int64\"},{\"column\":\"28 Days\",\"dtype\":\"Int64\"},{\"column\":\"29 Days\",\"dtype\":\"Int64\"},{\"column\":\"3 Days\",\"dtype\":\"Int64\"},{\"column\":\"30 Days\",\"dtype\":\"Int64\"},{\"column\":\"31 Days\",\"dtype\":\"Int64\"},{\"column\":\"32 Days\",\"dtype\":\"Int64\"},{\"column\":\"33 Days\",\"dtype\":\"Int64\"},{\"column\":\"34 Days\",\"dtype\":\"Int64\"},{\"column\":\"35 Days\",\"dtype\":\"Int64\"},{\"column\":\"36 Days\",\"dtype\":\"Int64\"},{\"column\":\"37 Days\",\"dtype\":\"Int64\"},{\"column\":\"38 Days\",\"dtype\":\"Int64\"},{\"column\":\"39 Days\",\"dtype\":\"Int64\"},{\"column\":\"4 Days\",\"dtype\":\"Int64\"},{\"column\":\"40 Days\",\"dtype\":\"Int64\"},{\"column\":\"41 Days\",\"dtype\":\"Int64\"},{\"column\":\"42 Days\",\"dtype\":\"Float64\"},{\"column\":\"43 Days\",\"dtype\":\"Int64\"},{\"column\":\"44 Days\",\"dtype\":\"Int64\"},{\"column\":\"45 Days\",\"dtype\":\"Int64\"},{\"column\":\"46 Days\",\"dtype\":\"Int64\"},{\"column\":\"47 Days\",\"dtype\":\"Int64\"},{\"column\":\"48 Days\",\"dtype\":\"Int64\"},{\"column\":\"49 Days\",\"dtype\":\"Int64\"},{\"column\":\"5 Days\",\"dtype\":\"Int64\"},{\"column\":\"50 Days\",\"dtype\":\"Int64\"},{\"column\":\"51 Days\",\"dtype\":\"Int64\"},{\"column\":\"52 Days\",\"dtype\":\"Int64\"},{\"column\":\"53 Days\",\"dtype\":\"Int64\"},{\"column\":\"54 Days\",\"dtype\":\"Int64\"},{\"column\":\"55 Days\",\"dtype\":\"Int64\"},{\"column\":\"56 Days\",\"dtype\":\"Int64\"},{\"column\":\"57 Days\",\"dtype\":\"Int64\"},{\"column\":\"58 Days\",\"dtype\":\"Int64\"},{\"column\":\"59 Days\",\"dtype\":\"Int64\"},{\"column\":\"6 Days\",\"dtype\":\"Int64\"},{\"column\":\"60 Days\",\"dtype\":\"Int64\"},{\"column\":\"61 Days\",\"dtype\":\"Int64\"},{\"column\":\"62 Days\",\"dtype\":\"Int64\"},{\"column\":\"63 Days\",\"dtype\":\"Int64\"},{\"column\":\"64 Days\",\"dtype\":\"Int64\"},{\"column\":\"65 Days\",\"dtype\":\"Int64\"},{\"column\":\"66 Days\",\"dtype\":\"Int64\"},{\"column\":\"67 Days\",\"dtype\":\"Int64\"},{\"column\":\"68 Days\",\"dtype\":\"Int64\"},{\"column\":\"69 Days\",\"dtype\":\"Int64\"},{\"column\":\"7 Days\",\"dtype\":\"Int64\"},{\"column\":\"70 Days\",\"dtype\":\"Int64\"},{\"column\":\"71 Days\",\"dtype\":\"Int64\"},{\"column\":\"72 Days\",\"dtype\":\"Float64\"},{\"column\":\"73 Days\",\"dtype\":\"Int64\"},{\"column\":\"74 Days\",\"dtype\":\"Int64\"},{\"column\":\"75 Days\",\"dtype\":\"Int64\"},{\"column\":\"76 Days\",\"dtype\":\"Int64\"},{\"column\":\"77 Days\",\"dtype\":\"Int64\"},{\"column\":\"78 Days\",\"dtype\":\"Int64\"},{\"column\":\"79 Days\",\"dtype\":\"Int64\"},{\"column\":\"8 Days\",\"dtype\":\"Int64\"},{\"column\":\"80 Days\",\"dtype\":\"Int64\"},{\"column\":\"81 Days\",\"dtype\":\"Int64\"},{\"column\":\"82 Days\",\"dtype\":\"Int64\"},{\"column\":\"83 Days\",\"dtype\":\"Int64\"},{\"column\":\"84 Days\",\"dtype\":\"Int64\"},{\"column\":\"85 Days\",\"dtype\":\"Int64\"},{\"column\":\"86 Days\",\"dtype\":\"Int64\"},{\"column\":\"87 Days\",\"dtype\":\"Int64\"},{\"column\":\"88 Days\",\"dtype\":\"Int64\"},{\"column\":\"89 Days\",\"dtype\":\"Int64\"},{\"column\":\"9 Days\",\"dtype\":\"Int64\"},{\"column\":\"90 Days\",\"dtype\":\"Int64\"},{\"column\":\"< 1 Day\",\"dtype\":\"Int64\"},{\"column\":\"Business Unit\",\"dtype\":\"string\"},{\"column\":\"Company\",\"dtype\":\"string\"},{\"column\":\"Contact\",\"dtype\":\"string\"},{\"column\":\"Current\",\"dtype\":\"Int64\"},{\"column\":\"Invoice Breakdown\",\"dtype\":\"string\"},{\"column\":\"Older\",\"dtype\":\"Float64\"},{\"column\":\"Total\",\"dtype\":\"Float64\"}]",
+          "false_counter": 0
+        }
+      }
+    ],
+    "AI Agent for filtering plan": [
+      {
+        "json": {
+          "output": {
+            "filters": [],
+            "row_aggregations": [
+              {
+                "column": [
+                  "current",
+                  "1 day",
+                  "2 days",
+                  "3 Days",
+                  "4 Days",
+                  "5 Days",
+                  "6 Days",
+                  "7 Days",
+                  "8 Days",
+                  "9 Days",
+                  "10 Days",
+                  "11 Days",
+                  "12 Days",
+                  "13 Days",
+                  "14 Days",
+                  "15 Days",
+                  "16 Days",
+                  "17 Days",
+                  "18 Days",
+                  "19 Days",
+                  "20 Days",
+                  "21 Days",
+                  "22 Days",
+                  "23 Days",
+                  "24 Days",
+                  "25 Days",
+                  "26 Days",
+                  "27 Days",
+                  "28 Days",
+                  "29 Days",
+                  "30 Days"
+                ],
+                "operation": "sum",
+                "alias": "0-30 Days"
+              },
+              {
+                "column": [
+                  "31 Days",
+                  "32 Days",
+                  "33 Days",
+                  "34 Days",
+                  "35 Days",
+                  "36 Days",
+                  "37 Days",
+                  "38 Days",
+                  "39 Days",
+                  "40 Days",
+                  "41 Days",
+                  "42 Days",
+                  "43 Days",
+                  "44 Days",
+                  "45 Days",
+                  "46 Days",
+                  "47 Days",
+                  "48 Days",
+                  "49 Days",
+                  "50 Days",
+                  "51 Days",
+                  "52 Days",
+                  "53 Days",
+                  "54 Days",
+                  "55 Days",
+                  "56 Days",
+                  "57 Days",
+                  "58 Days",
+                  "59 Days",
+                  "60 Days"
+                ],
+                "operation": "sum",
+                "alias": "31-60 Days"
+              },
+              {
+                "column": [
+                  "61 Days",
+                  "62 Days",
+                  "63 Days",
+                  "64 Days",
+                  "65 Days",
+                  "66 Days",
+                  "67 Days",
+                  "68 Days",
+                  "69 Days",
+                  "70 Days",
+                  "71 Days",
+                  "72 Days",
+                  "73 Days",
+                  "74 Days",
+                  "75 Days",
+                  "76 Days",
+                  "77 Days",
+                  "78 Days",
+                  "79 Days",
+                  "80 Days",
+                  "81 Days",
+                  "82 Days",
+                  "83 Days",
+                  "84 Days",
+                  "85 Days",
+                  "86 Days",
+                  "87 Days",
+                  "88 Days",
+                  "89 Days",
+                  "90 Days"
+                ],
+                "operation": "sum",
+                "alias": "61-90 Days"
+              },
+              {
+                "column": [
+                  "Older"
+                ],
+                "operation": "sum",
+                "alias": ">90 Days"
+              }
+            ],
+            "vertical_aggregations": [
+              {
+                "column": "0-30 Days",
+                "operation": "sum",
+                "alias": "0-30 Days Total",
+                "group_by": [
+                  "Company"
+                ]
+              },
+              {
+                "column": "31-60 Days",
+                "operation": "sum",
+                "alias": "31-60 Days Total",
+                "group_by": [
+                  "Company"
+                ]
+              },
+              {
+                "column": "61-90 Days",
+                "operation": "sum",
+                "alias": "61-90 Days Total",
+                "group_by": [
+                  "Company"
+                ]
+              },
+              {
+                "column": ">90 Days",
+                "operation": "sum",
+                "alias": ">90 Days Total",
+                "group_by": [
+                  "Company"
+                ]
+              },
+              {
+                "column": "0-30 Days",
+                "operation": "sum",
+                "alias": "0-30 Days Grand Total",
+                "group_by": []
+              },
+              {
+                "column": "31-60 Days",
+                "operation": "sum",
+                "alias": "31-60 Days Grand Total",
+                "group_by": []
+              },
+              {
+                "column": "61-90 Days",
+                "operation": "sum",
+                "alias": "61-90 Days Grand Total",
+                "group_by": []
+              },
+              {
+                "column": ">90 Days",
+                "operation": "sum",
+                "alias": ">90 Days Grand Total",
+                "group_by": []
+              }
+            ],
+            "aggregation_order": [
+              "row",
+              "vertical"
+            ],
+            "sort": {
+              "by": "company",
+              "order": "asc"
+            }
+          }
+        }
+      }
+    ],
+    "Get AR Schema": [
+      {
+        "json": {
+          "schema": [
+            {
+              "column": "1 Day",
+              "dtype": "Int64"
+            },
+            {
+              "column": "10 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "11 Days",
+              "dtype": "Float64"
+            },
+            {
+              "column": "12 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "13 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "14 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "15 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "16 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "17 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "18 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "19 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "2 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "20 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "21 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "22 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "23 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "24 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "25 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "26 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "27 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "28 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "29 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "3 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "30 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "31 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "32 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "33 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "34 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "35 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "36 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "37 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "38 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "39 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "4 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "40 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "41 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "42 Days",
+              "dtype": "Float64"
+            },
+            {
+              "column": "43 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "44 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "45 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "46 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "47 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "48 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "49 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "5 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "50 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "51 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "52 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "53 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "54 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "55 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "56 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "57 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "58 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "59 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "6 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "60 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "61 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "62 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "63 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "64 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "65 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "66 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "67 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "68 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "69 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "7 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "70 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "71 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "72 Days",
+              "dtype": "Float64"
+            },
+            {
+              "column": "73 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "74 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "75 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "76 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "77 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "78 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "79 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "8 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "80 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "81 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "82 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "83 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "84 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "85 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "86 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "87 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "88 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "89 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "9 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "90 Days",
+              "dtype": "Int64"
+            },
+            {
+              "column": "< 1 Day",
+              "dtype": "Int64"
+            },
+            {
+              "column": "Business Unit",
+              "dtype": "string"
+            },
+            {
+              "column": "Company",
+              "dtype": "string"
+            },
+            {
+              "column": "Contact",
+              "dtype": "string"
+            },
+            {
+              "column": "Current",
+              "dtype": "Int64"
+            },
+            {
+              "column": "Invoice Breakdown",
+              "dtype": "string"
+            },
+            {
+              "column": "Older",
+              "dtype": "Float64"
+            },
+            {
+              "column": "Total",
+              "dtype": "Float64"
+            }
+          ]
+        }
+      }
+    ],
+    "Get user query": [
+      {
+        "json": {
+          "user_query": "What was the oustanding amoount on 2025-07-31 for 322 K road?",
+          "report_date": "2025-07-31",
+          "periods": "3",
+          "period_of": "1",
+          "period_type": "Month",
+          "show_current": "true",
+          "connection_id": "3217affa-808c-469f-a7c2-4111462027d3 ",
+          "companies": "322 K RD Limited",
+          "is_response_only": "1"
+        }
+      }
+    ]
+  },
+  "connections": {
+    "Data gathering API": {
+      "main": [
+        [
+          {
+            "node": "Data array",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Data array": {
+      "main": [
+        [
+          {
+            "node": "Get AR Schema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent for filtering plan",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent for filtering plan",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI1": {
+      "main": [
+        [
+          {
+            "node": "Retrieve response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Filter based on filtering plan",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set user input for schema issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent for filtering plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Filtering Plan": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set user input for schema issue": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter based on filtering plan": {
+      "main": [
+        [
+          {
+            "node": "OpenAI1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set user input": {
+      "main": [
+        [
+          {
+            "node": "AI Agent for filtering plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent for filtering plan": {
+      "main": [
+        [
+          {
+            "node": "Validate Filtering Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get AR Schema": {
+      "main": [
+        [
+          {
+            "node": "Set user input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get user query": {
+      "main": [
+        [
+          {
+            "node": "Data gathering API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Get user query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "d566ee8b-e2b5-441a-8288-af04bbb3da83",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7a72adbca104f72efa11828513a222a471bb9ce9e411814ef29c2cd0bea62959"
+  },
+  "id": "dqahChjvPqY2ZQPF",
+  "tags": []
+}
